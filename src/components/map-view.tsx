@@ -1,0 +1,872 @@
+import * as React from "react";
+import {
+  Amphora,
+  Castle,
+  Crown,
+  Flag,
+  Gem,
+  type LucideIcon,
+  Maximize,
+  Shield,
+  ShieldHalf,
+  Skull,
+  Swords,
+  Trees,
+  Users,
+} from "lucide-react";
+
+import { heroPortraitUrl, TEAM_COLORS } from "@/components/player-roster";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+
+export interface PlayerPosition {
+  slot: number;
+  team: number;
+  hero_id: number;
+  alive: boolean;
+  x: number;
+  y: number;
+  /** Look angles (deg): yaw = horizontal facing (0 = +X/east, CCW); pitch
+   * wraps 0..360 (small/near-360 = level, ~90 = looking down). */
+  yaw: number;
+  pitch: number;
+  health: number;
+  max_health: number;
+  net_worth: number;
+  ap_net_worth: number;
+  kills: number;
+  deaths: number;
+  assists: number;
+  hero_damage: number;
+  hero_healing: number;
+  bonus_health: number;
+  spirit_power: number;
+  fire_rate: number;
+  weapon_damage: number;
+  cooldown_reduction: number;
+  ammo: number;
+}
+
+/** A hero's signature ability (constant for the match). */
+export interface AbilitySlot {
+  ability_id: number;
+  ability_name: string;
+}
+
+export interface HeroAbilities {
+  hero_id: number;
+  abilities: AbilitySlot[];
+}
+
+/** A point at which an ability's upgrade tier increased (0 up to 3). */
+export interface AbilityUpgradeEvent {
+  tick: number;
+  hero_id: number;
+  ability_id: number;
+  level: number;
+}
+
+export interface PositionFrame {
+  tick: number;
+  // Active (non-paused) ticks elapsed at this frame — the regulation clock.
+  reg_ticks: number;
+  players: PlayerPosition[];
+  // Alive lane troopers, packed by pack_trooper in the parser (see map render).
+  troopers: number[];
+  // Live urn (Idol) world positions, flat [x0, y0, x1, y1, …].
+  urns: number[];
+}
+
+export interface PauseInterval {
+  start: number;
+  end: number;
+}
+
+export interface ResolvedPaths {
+  vec_x?: string;
+  vec_y?: string;
+  vec_z?: string;
+  cell_x?: string;
+  cell_y?: string;
+  cell_z?: string;
+  team?: string;
+  life?: string;
+}
+
+export interface PositionsResult {
+  paths: ResolvedPaths;
+  frames: PositionFrame[];
+  item_events: ItemEvent[];
+  kill_events: KillEvent[];
+  ability_events: AbilityEvent[];
+  ability_slots: HeroAbilities[];
+  ability_upgrade_events: AbilityUpgradeEvent[];
+  objective_events: ObjectiveEvent[];
+  objectives: ObjectiveInfo[];
+  objective_health: ObjectiveHealthEvent[];
+  neutral_camps: NeutralCamp[];
+  camp_state_events: CampStateEvent[];
+  chat_events: ChatEvent[];
+  pause_intervals: PauseInterval[];
+  game_over_tick: number | null;
+  regulation_ticks: number | null;
+}
+
+/** A neutral jungle camp. `size` is 1/2/3 (small/medium/large) → chevron count. */
+export interface NeutralCamp {
+  id: number;
+  x: number;
+  y: number;
+  size: number;
+}
+
+/** A camp up (spawned) / down (cleared) transition. */
+export interface CampStateEvent {
+  tick: number;
+  camp_id: number;
+  up: boolean;
+}
+
+/** A neutral camp resolved at the current tick, ready to draw. */
+export interface NeutralCampState {
+  x: number;
+  y: number;
+  size: number;
+  up: boolean;
+}
+
+/**
+ * A player chat message. `hero_id` is the sender (0 if unresolved); `all_chat`
+ * is true for global chat, false for team-only.
+ */
+export interface ChatEvent {
+  tick: number;
+  hero_id: number;
+  all_chat: boolean;
+  text: string;
+}
+
+/**
+ * One objective in the constant roster (position is static; Mid-Boss is treated
+ * as static at its arena center). `death_tick` is null if it survived.
+ */
+export interface ObjectiveInfo {
+  id: number;
+  kind: ObjectiveKind;
+  team: number;
+  x: number;
+  y: number;
+  max_health: number;
+  spawn_tick: number;
+  death_tick: number | null;
+}
+
+/** A sparse objective health sample, reconstructed per tick like items. */
+export interface ObjectiveHealthEvent {
+  tick: number;
+  id: number;
+  health: number;
+  max_health: number;
+}
+
+/** A live objective resolved at the current tick, ready to draw. */
+export interface ObjectiveState {
+  kind: ObjectiveKind;
+  x: number;
+  y: number;
+  health: number;
+  max_health: number;
+  color: string;
+}
+
+/** Shared per-kind icon, used by both the map overlay and the feed. */
+export const OBJECTIVE_ICONS: Record<ObjectiveKind, LucideIcon> = {
+  guardian: Shield,
+  walker: Castle,
+  base_guardian: ShieldHalf,
+  shrine: Gem,
+  patron: Crown,
+  mid_boss: Skull,
+  urn: Amphora,
+  objective: Flag,
+};
+
+/** Stable objective kind slugs emitted by the parser. */
+export type ObjectiveKind =
+  | "guardian"
+  | "walker"
+  | "shrine"
+  | "base_guardian"
+  | "patron"
+  | "mid_boss"
+  | "urn"
+  | "objective";
+
+/**
+ * An objective destruction. `team` is the losing/owning team (−1/4 for the
+ * neutral Mid-Boss); `x`/`y` are world-space (null only if the message ever
+ * omits a position).
+ */
+export interface ObjectiveEvent {
+  tick: number;
+  kind: ObjectiveKind;
+  team: number;
+  killer_hero_id: number;
+  x: number | null;
+  y: number | null;
+}
+
+export interface ItemEvent {
+  tick: number;
+  hero_id: number;
+  ability_id: number;
+  ability_name: string;
+  change: "purchased" | "upgraded" | "sold";
+}
+
+export interface KillEvent {
+  tick: number;
+  attacker_hero_id: number;
+  victim_hero_id: number;
+  x: number;
+  y: number;
+}
+
+export interface AbilityEvent {
+  tick: number;
+  hero_id: number;
+  ability_name: string;
+}
+
+export interface KillMarker {
+  x: number;
+  y: number;
+  color: string;
+}
+
+export interface ObjectiveMarker {
+  x: number;
+  y: number;
+  color: string;
+  kind: ObjectiveKind;
+}
+
+// Map world bounds extracted from the .vmap data: a 21504 × 21504 square
+// centered on the origin. World +Y is "up" on the minimap, so we flip Y
+// when projecting into image space.
+const WORLD_MIN = -10752;
+const WORLD_SIZE = 21504;
+
+// Sizes are in viewBox (world) units. WORLD_SIZE = 21504, so a dot inner
+// radius of 450 ≈ 2.1% of the map width — roughly 17px on a 800px map.
+const DOT_INNER_R = 450;
+const DOT_BORDER = 130;
+
+// Facing caret: a filled triangle attached to the dot's rim, pointing where
+// the hero is looking (yaw only). World units. The base edge sits at
+// perpendicular distance CARET_BASE_R from center, so anchoring it at
+// DOT_INNER_R makes the base tangent to the inner circle; its corners then
+// tuck under the ring stroke and the tip pokes outward.
+const CARET_BASE_R = DOT_INNER_R;
+// Tip extent: nudged up a bit from 705 → height ~320 (still well short of the
+// original 510).
+const CARET_TIP_R = 770;
+const CARET_HALF_W = 260;
+
+// Neutral (gold) accent for jungle camp chevrons.
+const NEUTRAL_CAMP_COLOR = "#e0b84a";
+
+// Cyan accent for the urn (Idol), shared with the objectives feed.
+export const URN_COLOR = "#22d3ee";
+
+// Lane trooper dot radius (world units) — small; counter-scaled to stay ~4px.
+const TROOPER_R = 95;
+
+// Toggleable map layers (the buttons in the map's upper-left).
+type LayerKey = "heroes" | "troopers" | "neutrals" | "objectives" | "urn";
+type Layers = Record<LayerKey, boolean>;
+const LAYER_TOGGLES: {
+  key: LayerKey;
+  label: string;
+  Icon: LucideIcon;
+  desc: string;
+}[] = [
+  { key: "heroes", label: "Heroes", Icon: Users, desc: "Player hero positions" },
+  {
+    key: "troopers",
+    label: "Troopers",
+    Icon: Swords,
+    desc: "Lane creeps marching down each lane",
+  },
+  {
+    key: "neutrals",
+    label: "Neutrals",
+    Icon: Trees,
+    desc: "Neutral jungle camps — chevrons mark camp size",
+  },
+  {
+    key: "objectives",
+    label: "Objectives",
+    Icon: Castle,
+    desc: "Guardians, Walkers, Shrines, Patron & Mid-Boss",
+  },
+  {
+    key: "urn",
+    label: "Urn",
+    Icon: Amphora,
+    desc: "The urn's (Idol's) live location",
+  },
+];
+
+type MapLayer = "surface" | "tunnels";
+
+const LAYERS: Record<MapLayer, { label: string; src: string }> = {
+  surface: {
+    label: "Surface",
+    src: "/minimap/minimap_midtown_mid_psd_dd4bcbf9.webp",
+  },
+  tunnels: {
+    label: "Tunnels",
+    src: "/minimap/minimap_midtown_mid_tunnels_psd.webp",
+  },
+};
+
+function teamColor(team: number) {
+  return TEAM_COLORS[team] ?? "#888";
+}
+
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 6;
+
+// Pan is in container pixels. At zoom=z the content is z× its base size, so
+// the maximum pan that keeps the edges in view is ((z - 1) * dim) / 2.
+function clampPan(
+  zoom: number,
+  pan: { x: number; y: number },
+  width: number,
+  height: number,
+) {
+  const maxX = ((zoom - 1) * width) / 2;
+  const maxY = ((zoom - 1) * height) / 2;
+  return {
+    x: Math.max(-maxX, Math.min(maxX, pan.x)),
+    y: Math.max(-maxY, Math.min(maxY, pan.y)),
+  };
+}
+
+export function MapView({
+  frame,
+  className,
+  meta,
+  killMarkers,
+  objectiveMarkers,
+  objectiveStates,
+  campStates,
+  onSelectPlayer,
+}: {
+  frame: PositionFrame | undefined;
+  className?: string;
+  meta?: React.ReactNode;
+  killMarkers?: KillMarker[];
+  objectiveMarkers?: ObjectiveMarker[];
+  objectiveStates?: ObjectiveState[];
+  campStates?: NeutralCampState[];
+  onSelectPlayer?: (heroId: number) => void;
+}) {
+  const [layer, setLayer] = React.useState<MapLayer>("surface");
+  const [layers, setLayers] = React.useState<Layers>({
+    heroes: true,
+    troopers: true,
+    neutrals: true,
+    objectives: true,
+    urn: true,
+  });
+  const [zoom, setZoom] = React.useState(1);
+  const [pan, setPan] = React.useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = React.useState(false);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const zoomRef = React.useRef(zoom);
+  const panRef = React.useRef(pan);
+  zoomRef.current = zoom;
+  panRef.current = pan;
+
+  const reset = React.useCallback(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, []);
+
+  // Wheel zoom — bound via addEventListener so we can preventDefault to stop
+  // the page from scrolling. React's onWheel is passive on the root.
+  React.useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const prevZoom = zoomRef.current;
+      const prevPan = panRef.current;
+      const next = Math.max(
+        MIN_ZOOM,
+        Math.min(MAX_ZOOM, prevZoom * Math.exp(-e.deltaY * 0.0015)),
+      );
+      if (next === prevZoom) return;
+      // Zoom toward the cursor: keep the world point under the pointer fixed.
+      const cx = e.clientX - rect.left - rect.width / 2;
+      const cy = e.clientY - rect.top - rect.height / 2;
+      const ratio = next / prevZoom;
+      const nextPan = clampPan(
+        next,
+        { x: cx - (cx - prevPan.x) * ratio, y: cy - (cy - prevPan.y) * ratio },
+        rect.width,
+        rect.height,
+      );
+      setZoom(next);
+      setPan(nextPan);
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, []);
+
+  const dragRef = React.useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startPan: { x: number; y: number };
+  } | null>(null);
+
+  function handlePointerDown(e: React.PointerEvent) {
+    if (zoom <= 1) return;
+    // Don't hijack clicks on overlay controls (e.g. the reset button) or on a
+    // player marker — let the underlying element receive the click instead of
+    // starting a pan.
+    if (
+      e.target instanceof Element &&
+      e.target.closest("button, [data-hero]")
+    ) {
+      return;
+    }
+    const el = containerRef.current;
+    if (!el) return;
+    el.setPointerCapture(e.pointerId);
+    dragRef.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      startPan: pan,
+    };
+    setDragging(true);
+  }
+
+  function handlePointerMove(e: React.PointerEvent) {
+    const s = dragRef.current;
+    if (!s || s.pointerId !== e.pointerId) return;
+    const el = containerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setPan(
+      clampPan(
+        zoom,
+        {
+          x: s.startPan.x + (e.clientX - s.startX),
+          y: s.startPan.y + (e.clientY - s.startY),
+        },
+        rect.width,
+        rect.height,
+      ),
+    );
+  }
+
+  function endDrag(e: React.PointerEvent) {
+    const s = dragRef.current;
+    if (!s || s.pointerId !== e.pointerId) return;
+    containerRef.current?.releasePointerCapture(e.pointerId);
+    dragRef.current = null;
+    setDragging(false);
+  }
+
+  return (
+    <div className={cn("flex h-full min-h-0 flex-col items-stretch gap-3", className)}>
+      <div className="flex flex-shrink-0 items-center justify-between gap-3">
+        <div className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+          {meta}
+        </div>
+        <Tabs
+          value={layer}
+          onValueChange={(v) => setLayer(v as MapLayer)}
+          className="flex-shrink-0"
+        >
+          <TabsList>
+            <TabsTrigger value="surface">Surface</TabsTrigger>
+            <TabsTrigger value="tunnels">Tunnels</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
+
+      <div
+        ref={containerRef}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        className={cn(
+          "relative aspect-square h-full max-h-full max-w-full touch-none overflow-hidden rounded-lg border border-border bg-card select-none",
+          zoom > 1 && (dragging ? "cursor-grabbing" : "cursor-grab"),
+        )}
+      >
+        <div
+          className="absolute inset-0"
+          style={{
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            transformOrigin: "center center",
+          }}
+        >
+          {/* Render both layers stacked so swapping is just an opacity flip —
+              no image reflow or fetch flash on tab switch. */}
+          {(Object.keys(LAYERS) as MapLayer[]).map((key) => (
+            <img
+              key={key}
+              src={LAYERS[key].src}
+              alt={`Deadlock minimap (${key})`}
+              width={1024}
+              height={1024}
+              className={cn(
+                "absolute inset-0 h-full w-full object-contain transition-opacity",
+                key === layer ? "opacity-100" : "opacity-0",
+              )}
+              draggable={false}
+            />
+          ))}
+          <svg
+            viewBox={`0 0 ${WORLD_SIZE} ${WORLD_SIZE}`}
+            className="absolute inset-0 h-full w-full"
+            preserveAspectRatio="xMidYMid meet"
+          >
+            <defs>
+              <clipPath id="hero-dot-clip" clipPathUnits="userSpaceOnUse">
+                <circle cx={0} cy={0} r={DOT_INNER_R} />
+              </clipPath>
+            </defs>
+            {/* Lane troopers: small team-colored dots. Bottom layer. Each is a
+                single packed int (qx/qy/team) — see pack_trooper in the parser.
+                Surface-only — they don't traverse the tunnels. */}
+            {layer === "surface" &&
+              layers.troopers &&
+              frame?.troopers?.map((packed, i) => {
+              const team = packed & 1 ? 3 : 2;
+              const wx = ((packed >>> 11) & 0x3ff) * 32 - 16384;
+              const wy = ((packed >>> 1) & 0x3ff) * 32 - 16384;
+              return (
+                <circle
+                  key={`tr-${i}`}
+                  cx={wx - WORLD_MIN}
+                  cy={WORLD_SIZE - (wy - WORLD_MIN)}
+                  r={TROOPER_R / zoom}
+                  fill={teamColor(team)}
+                  fillOpacity={0.7}
+                />
+              );
+            })}
+            {/* Neutral camps: 1–3 stacked chevrons by size, bright when up and
+                dimmed when cleared. Bottom layer, beneath objectives + heroes.
+                Surface-only — the jungle camps live above the tunnels. */}
+            {layer === "surface" &&
+              layers.neutrals &&
+              campStates?.map((c, i) => {
+              const ccx = c.x - WORLD_MIN;
+              const ccy = WORLD_SIZE - (c.y - WORLD_MIN);
+              const n = Math.max(1, Math.min(3, c.size));
+              const chevW = 280;
+              const chevH = 130;
+              const sp = 170; // vertical spacing between stacked chevrons
+              // Apex-up carets stacked vertically, centered on the camp.
+              const d = Array.from({ length: n }, (_, k) => {
+                const y = (k - (n - 1) / 2) * sp;
+                return `M ${-chevW / 2} ${y + chevH / 2} L 0 ${y - chevH / 2} L ${chevW / 2} ${y + chevH / 2}`;
+              }).join(" ");
+              const campScale = 1 / zoom;
+              return (
+                <g
+                  key={`camp-${i}`}
+                  transform={`translate(${ccx} ${ccy}) scale(${campScale})`}
+                  opacity={c.up ? 1 : 0.25}
+                >
+                  <path
+                    d={d}
+                    fill="none"
+                    stroke={NEUTRAL_CAMP_COLOR}
+                    strokeWidth={70}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </g>
+              );
+            })}
+            {/* Live objectives: icon + a partial ring showing health / max.
+                Drawn beneath the hero dots so heroes stay on top. */}
+            {layers.objectives &&
+              objectiveStates?.map((o, i) => {
+              const ocx = o.x - WORLD_MIN;
+              const ocy = WORLD_SIZE - (o.y - WORLD_MIN);
+              const major = o.kind === "patron" || o.kind === "mid_boss";
+              const R = major ? 360 : 250; // node radius in world units
+              const ringW = major ? 95 : 75;
+              const ratio =
+                o.max_health > 0
+                  ? Math.max(0, Math.min(1, o.health / o.max_health))
+                  : 1;
+              const circ = 2 * Math.PI * R;
+              const Icon = OBJECTIVE_ICONS[o.kind] ?? OBJECTIVE_ICONS.objective;
+              const iconSize = R * 1.15;
+              const nodeScale = 1 / zoom;
+              return (
+                <g
+                  key={`obj-state-${i}`}
+                  transform={`translate(${ocx} ${ocy}) scale(${nodeScale})`}
+                >
+                  <circle r={R} fill="rgba(12,14,22,0.82)" />
+                  <circle
+                    r={R}
+                    fill="none"
+                    stroke="rgba(255,255,255,0.16)"
+                    strokeWidth={ringW}
+                  />
+                  {ratio > 0 && (
+                    <circle
+                      r={R}
+                      fill="none"
+                      stroke={o.color}
+                      strokeWidth={ringW}
+                      strokeDasharray={`${ratio * circ} ${circ}`}
+                      transform="rotate(-90)"
+                    />
+                  )}
+                  <Icon
+                    x={-iconSize / 2}
+                    y={-iconSize / 2}
+                    width={iconSize}
+                    height={iconSize}
+                    color="#fff"
+                    strokeWidth={2.4}
+                  />
+                </g>
+              );
+            })}
+            {layers.heroes &&
+              frame?.players.map((p) => {
+              const cx = p.x - WORLD_MIN;
+              const cy = WORLD_SIZE - (p.y - WORLD_MIN);
+              const portrait = heroPortraitUrl(p.hero_id);
+              const stroke = teamColor(p.team);
+              // Wrapper already scales by `zoom`; counter-scale the dot by the
+              // same factor so its on-screen size stays constant at the
+              // zoomed-out (base) size — never larger than the starting size,
+              // but bigger than if we let it keep shrinking as you zoom in.
+              const dotScale = 1 / zoom;
+              return (
+                <g
+                  key={p.slot}
+                  data-hero={p.hero_id}
+                  transform={`translate(${cx} ${cy}) scale(${dotScale})`}
+                  opacity={p.alive ? 1 : 0.35}
+                  onClick={
+                    onSelectPlayer
+                      ? () => onSelectPlayer(p.hero_id)
+                      : undefined
+                  }
+                  style={onSelectPlayer ? { cursor: "pointer" } : undefined}
+                >
+                  {/* Facing caret: filled triangle on the rim pointing where
+                      the hero looks (yaw). Drawn first so its base tucks under
+                      the ring. Screen Y is flipped vs world, so world yaw
+                      becomes a clockwise rotate(-yaw). */}
+                  {p.alive && (
+                    <path
+                      d={`M${CARET_BASE_R} ${CARET_HALF_W} L${CARET_TIP_R} 0 L${CARET_BASE_R} ${-CARET_HALF_W} Z`}
+                      transform={`rotate(${-p.yaw})`}
+                      fill={stroke}
+                    />
+                  )}
+                  {portrait ? (
+                    <image
+                      href={portrait}
+                      x={-DOT_INNER_R}
+                      y={-DOT_INNER_R}
+                      width={DOT_INNER_R * 2}
+                      height={DOT_INNER_R * 2}
+                      clipPath="url(#hero-dot-clip)"
+                      preserveAspectRatio="xMidYMid slice"
+                    />
+                  ) : (
+                    <circle r={DOT_INNER_R} fill={stroke} />
+                  )}
+                  <circle
+                    r={DOT_INNER_R + DOT_BORDER / 2}
+                    fill="none"
+                    stroke={stroke}
+                    strokeWidth={DOT_BORDER}
+                  />
+                </g>
+              );
+            })}
+            {layers.heroes &&
+              killMarkers?.map((k, i) => {
+              const cx = k.x - WORLD_MIN;
+              const cy = WORLD_SIZE - (k.y - WORLD_MIN);
+              const r = 320; // X glyph extent in world units
+              const w = 130; // stroke width
+              const markerScale = 1 / Math.pow(zoom, 1.2);
+              return (
+                <g
+                  key={`kill-${i}`}
+                  transform={`translate(${cx} ${cy}) scale(${markerScale})`}
+                >
+                  <line
+                    x1={-r}
+                    y1={-r}
+                    x2={r}
+                    y2={r}
+                    stroke={k.color}
+                    strokeWidth={w}
+                    strokeLinecap="round"
+                  />
+                  <line
+                    x1={-r}
+                    y1={r}
+                    x2={r}
+                    y2={-r}
+                    stroke={k.color}
+                    strokeWidth={w}
+                    strokeLinecap="round"
+                  />
+                </g>
+              );
+            })}
+            {layers.objectives &&
+              objectiveMarkers?.map((o, i) => {
+              const cx = o.x - WORLD_MIN;
+              const cy = WORLD_SIZE - (o.y - WORLD_MIN);
+              // Marquee objectives read a little larger than lane buildings.
+              const major = o.kind === "patron" || o.kind === "mid_boss";
+              const r = major ? 520 : 360; // diamond half-extent, world units
+              const markerScale = 1 / Math.pow(zoom, 1.2);
+              return (
+                <g
+                  key={`obj-${i}`}
+                  transform={`translate(${cx} ${cy}) scale(${markerScale})`}
+                >
+                  <path
+                    d={`M0 ${-r} L ${r} 0 L 0 ${r} L ${-r} 0 Z`}
+                    fill={o.color}
+                    fillOpacity={0.85}
+                    stroke="#fff"
+                    strokeWidth={90}
+                    strokeOpacity={0.9}
+                    strokeLinejoin="round"
+                  />
+                </g>
+              );
+            })}
+            {/* Live urn (Idol): a cyan badge wherever the urn entity currently
+                is (on the ground or mid auto-return). Flat [x0,y0,x1,y1,…];
+                usually one, briefly two during a handoff. Rendered last so it
+                sits on top of everything, including a co-located hero. */}
+            {layers.urn &&
+              Array.from(
+                { length: Math.floor((frame?.urns.length ?? 0) / 2) },
+                (_, i) => {
+                  const wx = frame!.urns[i * 2];
+                  const wy = frame!.urns[i * 2 + 1];
+                  const ucx = wx - WORLD_MIN;
+                  const ucy = WORLD_SIZE - (wy - WORLD_MIN);
+                  const R = 260;
+                  const iconSize = R * 1.15;
+                  const UrnIcon = OBJECTIVE_ICONS.urn;
+                  return (
+                    <g
+                      key={`urn-${i}`}
+                      transform={`translate(${ucx} ${ucy}) scale(${1 / zoom})`}
+                    >
+                      <circle r={R} fill="rgba(12,14,22,0.82)" />
+                      <circle
+                        r={R}
+                        fill="none"
+                        stroke={URN_COLOR}
+                        strokeWidth={75}
+                      />
+                      <UrnIcon
+                        x={-iconSize / 2}
+                        y={-iconSize / 2}
+                        width={iconSize}
+                        height={iconSize}
+                        color={URN_COLOR}
+                        strokeWidth={2.4}
+                      />
+                    </g>
+                  );
+                },
+              )}
+          </svg>
+        </div>
+
+        {/* Layer toggles, mirroring the reset button (upper-right). */}
+        <div className="absolute top-2 left-2 flex gap-1">
+          {LAYER_TOGGLES.map(({ key, label, Icon, desc }) => {
+            // Troopers and neutrals are surface-only, so their toggles are
+            // disabled (and visibly off) while viewing the tunnels.
+            const surfaceOnly = key === "troopers" || key === "neutrals";
+            const disabled = surfaceOnly && layer === "tunnels";
+            const on = layers[key] && !disabled;
+            return (
+              <Tooltip key={key}>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    onClick={() =>
+                      setLayers((l) => ({ ...l, [key]: !l[key] }))
+                    }
+                    aria-pressed={on}
+                    aria-label={`${layers[key] ? "Hide" : "Show"} ${label.toLowerCase()}`}
+                    className={cn(
+                      "rounded-md border border-border p-1.5 shadow-sm backdrop-blur transition-colors",
+                      "disabled:cursor-not-allowed disabled:opacity-40",
+                      on
+                        ? "bg-background/80 text-foreground hover:bg-background"
+                        : "bg-background/40 text-muted-foreground/50 hover:bg-background/60",
+                    )}
+                  >
+                    <Icon className="size-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <span className="font-medium">{label}</span>
+                  <span className="text-muted-foreground"> — {desc}</span>
+                  {surfaceOnly && (
+                    <span className="text-muted-foreground"> (surface only)</span>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            );
+          })}
+        </div>
+
+        {zoom > 1 && (
+          <button
+            type="button"
+            onClick={reset}
+            aria-label="Reset zoom"
+            title="Reset zoom"
+            className="absolute top-2 right-2 rounded-md border border-border bg-background/80 p-1.5 text-foreground shadow-sm backdrop-blur transition-colors hover:bg-background"
+          >
+            <Maximize className="size-4" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}

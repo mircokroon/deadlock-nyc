@@ -1,0 +1,1114 @@
+{
+  "armor_upgrade_t1": {
+    "cat": "vitality",
+    "cost": 800
+  },
+  "armor_upgrade_t2": {
+    "cat": "vitality",
+    "cost": 1600
+  },
+  "armor_upgrade_t3": {
+    "cat": "vitality",
+    "cost": 3200
+  },
+  "armor_upgrade_t4": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "armor_upgrade_t5": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "item_projectile_test_01": {
+    "cat": "weapon",
+    "cost": 800
+  },
+  "item_projectile_test_02": {
+    "cat": "weapon",
+    "cost": 800
+  },
+  "item_projectile_test_03": {
+    "cat": "weapon",
+    "cost": 800
+  },
+  "item_projectile_test_04": {
+    "cat": "weapon",
+    "cost": 800
+  },
+  "item_projectile_test_05": {
+    "cat": "weapon",
+    "cost": 800
+  },
+  "item_projectile_test_06": {
+    "cat": "weapon",
+    "cost": 800
+  },
+  "tech_upgrade_t1": {
+    "cat": "spirit",
+    "cost": 800
+  },
+  "tech_upgrade_t2": {
+    "cat": "spirit",
+    "cost": 1600
+  },
+  "tech_upgrade_t3": {
+    "cat": "spirit",
+    "cost": 3200
+  },
+  "tech_upgrade_t4": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "tech_upgrade_t5": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_ability_power_shard": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_ability_refresher": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_ablative_coat": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_absorbing_armor": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_acolytes_glove": {
+    "cat": "spirit",
+    "cost": 800
+  },
+  "upgrade_active_bullet_shield": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_active_reload": {
+    "cat": "weapon",
+    "cost": 1600
+  },
+  "upgrade_aerial_assault": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_aerial_supremacy": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_ammo_scavenger": {
+    "cat": "spirit",
+    "cost": 800
+  },
+  "upgrade_ancient_shield": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_aoe_root": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_aoe_silence": {
+    "cat": "spirit",
+    "cost": 3200
+  },
+  "upgrade_aoe_smoke_bomb": {
+    "cat": "spirit",
+    "cost": 3200
+  },
+  "upgrade_aoe_tech_shield": {
+    "cat": "spirit",
+    "cost": 1600
+  },
+  "upgrade_apex_combat": {
+    "cat": "weapon",
+    "cost": 6400
+  },
+  "upgrade_aprounds": {
+    "cat": "weapon",
+    "cost": 6400
+  },
+  "upgrade_arcane_eater": {
+    "cat": "weapon",
+    "cost": 1600
+  },
+  "upgrade_arcane_extension": {
+    "cat": "spirit",
+    "cost": 1600
+  },
+  "upgrade_arcane_medallion": {
+    "cat": "spirit",
+    "cost": 3200
+  },
+  "upgrade_arcane_surge": {
+    "cat": "spirit",
+    "cost": 1600
+  },
+  "upgrade_arctic_blast": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_armor_reduction_debuff": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_attack_speed_1": {
+    "cat": "weapon",
+    "cost": 1600
+  },
+  "upgrade_attack_speed_2": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_auto_cleanse": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_banshee_slugs": {
+    "cat": "weapon",
+    "cost": 6400
+  },
+  "upgrade_belt_fed_magazine": {
+    "cat": "weapon",
+    "cost": 6400
+  },
+  "upgrade_berserker": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_blitz_bullets": {
+    "cat": "weapon",
+    "cost": 1600
+  },
+  "upgrade_blood_tribute": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_bonus_ability_charge_3": {
+    "cat": "spirit",
+    "cost": 3200
+  },
+  "upgrade_boundless_spirit": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_boxing_glove": {
+    "cat": "vitality",
+    "cost": 3200
+  },
+  "upgrade_bullet_armor": {
+    "cat": "vitality",
+    "cost": 1600
+  },
+  "upgrade_bullet_armor_2": {
+    "cat": "vitality",
+    "cost": 3200
+  },
+  "upgrade_bullet_armor_reduction_aura": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_bullet_damage_reduction_aura": {
+    "cat": "vitality",
+    "cost": 1600
+  },
+  "upgrade_bullet_resist_shredder": {
+    "cat": "spirit",
+    "cost": 1600
+  },
+  "upgrade_bulletshredimbue": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_burst_fire": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_burst_fire_actuator": {
+    "cat": "weapon",
+    "cost": 1600
+  },
+  "upgrade_camouflage": {
+    "cat": "vitality",
+    "cost": 1600
+  },
+  "upgrade_capacitor": {
+    "cat": "weapon",
+    "cost": 6400
+  },
+  "upgrade_cardio_calibrator": {
+    "cat": "vitality",
+    "cost": 1600
+  },
+  "upgrade_celestial_guidance": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_chain_lightning": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_charge_mastery": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_charmed_wraps": {
+    "cat": "spirit",
+    "cost": 1600
+  },
+  "upgrade_cheat_death": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_chonky": {
+    "cat": "vitality",
+    "cost": 3200
+  },
+  "upgrade_clip_size": {
+    "cat": "weapon",
+    "cost": 800
+  },
+  "upgrade_clip_size_2": {
+    "cat": "weapon",
+    "cost": 1600
+  },
+  "upgrade_clip_size_3": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_clip_size_fixed": {
+    "cat": "weapon",
+    "cost": 1600
+  },
+  "upgrade_clip_size_fixed_t3": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_cloak_of_opportunity": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_cloaking_device": {
+    "cat": "vitality",
+    "cost": 3200
+  },
+  "upgrade_cloaking_device_active": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_close_quarter_combat": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_close_range": {
+    "cat": "weapon",
+    "cost": 800
+  },
+  "upgrade_cold_front": {
+    "cat": "spirit",
+    "cost": 1600
+  },
+  "upgrade_colossus": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_combo_breaker": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_containment": {
+    "cat": "spirit",
+    "cost": 1600
+  },
+  "upgrade_cooldown_reduction": {
+    "cat": "spirit",
+    "cost": 3200
+  },
+  "upgrade_corpse_explosion": {
+    "cat": "spirit",
+    "cost": 3200
+  },
+  "upgrade_counterspell": {
+    "cat": "vitality",
+    "cost": 3200
+  },
+  "upgrade_crackshot": {
+    "cat": "weapon",
+    "cost": 1600
+  },
+  "upgrade_critshot": {
+    "cat": "weapon",
+    "cost": 6400
+  },
+  "upgrade_crushing_fists": {
+    "cat": "weapon",
+    "cost": 6400
+  },
+  "upgrade_damage_recycler": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_debuff_reducer": {
+    "cat": "vitality",
+    "cost": 1600
+  },
+  "upgrade_deflecting_armor": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_disarm": {
+    "cat": "spirit",
+    "cost": 800
+  },
+  "upgrade_discord": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_divine_barrier": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_diviners_kevlar": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_double_jump": {
+    "cat": "vitality",
+    "cost": 800
+  },
+  "upgrade_dps_aura": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_drum_magazine": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_duration_extender": {
+    "cat": "spirit",
+    "cost": 1600
+  },
+  "upgrade_eldritch_shot": {
+    "cat": "weapon",
+    "cost": 6400
+  },
+  "upgrade_electric_slippers": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_enchanted_holsters": {
+    "cat": "weapon",
+    "cost": 6400
+  },
+  "upgrade_endurance": {
+    "cat": "vitality",
+    "cost": 800
+  },
+  "upgrade_escalating_exposure": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_eternal_gift": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_ethereal_bullets": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_express_shot": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_extra_charge": {
+    "cat": "spirit",
+    "cost": 800
+  },
+  "upgrade_fervor": {
+    "cat": "weapon",
+    "cost": 6400
+  },
+  "upgrade_fire_rate_aura": {
+    "cat": "weapon",
+    "cost": 1600
+  },
+  "upgrade_fleetfoot_boots": {
+    "cat": "weapon",
+    "cost": 1600
+  },
+  "upgrade_focus_lens": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_frenzy": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_full_spectrum": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_fury_trance": {
+    "cat": "vitality",
+    "cost": 3200
+  },
+  "upgrade_galvanic_storm": {
+    "cat": "weapon",
+    "cost": 6400
+  },
+  "upgrade_glass_cannon": {
+    "cat": "weapon",
+    "cost": 6400
+  },
+  "upgrade_glass_cannon2": {
+    "cat": "weapon",
+    "cost": 6400
+  },
+  "upgrade_glitch": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_goose_egg": {
+    "cat": "spirit",
+    "cost": 800
+  },
+  "upgrade_greater_withering_whip": {
+    "cat": "spirit",
+    "cost": 3200
+  },
+  "upgrade_grit": {
+    "cat": "vitality",
+    "cost": 800
+  },
+  "upgrade_guardian_ward": {
+    "cat": "vitality",
+    "cost": 1600
+  },
+  "upgrade_haunting_scream": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_headhunter": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_headshot_booster": {
+    "cat": "weapon",
+    "cost": 800
+  },
+  "upgrade_headshot_booster2": {
+    "cat": "weapon",
+    "cost": 1600
+  },
+  "upgrade_heal_on_level": {
+    "cat": "vitality",
+    "cost": 800
+  },
+  "upgrade_healbane": {
+    "cat": "vitality",
+    "cost": 1600
+  },
+  "upgrade_healbuff": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_healing_booster": {
+    "cat": "vitality",
+    "cost": 1600
+  },
+  "upgrade_health": {
+    "cat": "vitality",
+    "cost": 800
+  },
+  "upgrade_health_2": {
+    "cat": "vitality",
+    "cost": 1600
+  },
+  "upgrade_health_nova": {
+    "cat": "vitality",
+    "cost": 3200
+  },
+  "upgrade_health_regen_1": {
+    "cat": "vitality",
+    "cost": 800
+  },
+  "upgrade_health_regen_aura": {
+    "cat": "vitality",
+    "cost": 3200
+  },
+  "upgrade_health_stealing_magic": {
+    "cat": "vitality",
+    "cost": 1600
+  },
+  "upgrade_health_stimpak": {
+    "cat": "vitality",
+    "cost": 800
+  },
+  "upgrade_height_advantage": {
+    "cat": "weapon",
+    "cost": 800
+  },
+  "upgrade_high_impact_armor": {
+    "cat": "vitality",
+    "cost": 1600
+  },
+  "upgrade_high_velocity_mag": {
+    "cat": "weapon",
+    "cost": 800
+  },
+  "upgrade_hollow_point_rounds": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_icarus_wings": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_imbued_ability": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_imbued_duration_extender": {
+    "cat": "spirit",
+    "cost": 3200
+  },
+  "upgrade_improved_bullet_armor": {
+    "cat": "vitality",
+    "cost": 3200
+  },
+  "upgrade_improved_spirit": {
+    "cat": "spirit",
+    "cost": 800
+  },
+  "upgrade_improved_stamina": {
+    "cat": "vitality",
+    "cost": 800
+  },
+  "upgrade_infinite_rounds": {
+    "cat": "weapon",
+    "cost": 6400
+  },
+  "upgrade_infinitemagazine": {
+    "cat": "weapon",
+    "cost": 6400
+  },
+  "upgrade_infuser": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_inhibitor": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_intensifying_clip": {
+    "cat": "weapon",
+    "cost": 1600
+  },
+  "upgrade_juggernaut": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_kinetic_sash": {
+    "cat": "weapon",
+    "cost": 1600
+  },
+  "upgrade_lifestrike_gauntlets": {
+    "cat": "vitality",
+    "cost": 800
+  },
+  "upgrade_long_range": {
+    "cat": "weapon",
+    "cost": 1600
+  },
+  "upgrade_long_range_slowing_tech": {
+    "cat": "spirit",
+    "cost": 3200
+  },
+  "upgrade_magic_burst": {
+    "cat": "spirit",
+    "cost": 800
+  },
+  "upgrade_magic_carpet": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_magic_clarity": {
+    "cat": "spirit",
+    "cost": 1600
+  },
+  "upgrade_magic_missile": {
+    "cat": "weapon",
+    "cost": 6400
+  },
+  "upgrade_magic_reach": {
+    "cat": "spirit",
+    "cost": 800
+  },
+  "upgrade_magic_shield": {
+    "cat": "vitality",
+    "cost": 1600
+  },
+  "upgrade_magic_shock": {
+    "cat": "spirit",
+    "cost": 3200
+  },
+  "upgrade_magic_slow": {
+    "cat": "spirit",
+    "cost": 1600
+  },
+  "upgrade_magic_storm": {
+    "cat": "spirit",
+    "cost": 3200
+  },
+  "upgrade_magic_tempo": {
+    "cat": "spirit",
+    "cost": 1600
+  },
+  "upgrade_magic_vulnerability": {
+    "cat": "spirit",
+    "cost": 1600
+  },
+  "upgrade_medic_bullets": {
+    "cat": "weapon",
+    "cost": 800
+  },
+  "upgrade_melee_charge": {
+    "cat": "weapon",
+    "cost": 1600
+  },
+  "upgrade_melee_rebuttal": {
+    "cat": "vitality",
+    "cost": 800
+  },
+  "upgrade_metal_skin": {
+    "cat": "vitality",
+    "cost": 3200
+  },
+  "upgrade_mod_disruptor": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_mystic_regeneration": {
+    "cat": "spirit",
+    "cost": 800
+  },
+  "upgrade_mystic_reverb": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_mystical_piano": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_nearby_enemy_boost": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_non_player_bonus": {
+    "cat": "weapon",
+    "cost": 800
+  },
+  "upgrade_non_player_bonus_sacrifice": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_nullification_aura": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_omnicharge_pendant": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_patrons_blessing": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_personal_rejuvenator": {
+    "cat": "spirit",
+    "cost": 3200
+  },
+  "upgrade_phantom_strike": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_predator_precision": {
+    "cat": "weapon",
+    "cost": 1600
+  },
+  "upgrade_prism_blast": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_pristine_emblem": {
+    "cat": "weapon",
+    "cost": 1600
+  },
+  "upgrade_proc_disarm": {
+    "cat": "weapon",
+    "cost": 1600
+  },
+  "upgrade_proc_silence": {
+    "cat": "weapon",
+    "cost": 6400
+  },
+  "upgrade_proc_tech_damage": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_quarantine": {
+    "cat": "spirit",
+    "cost": 1600
+  },
+  "upgrade_quick_silver": {
+    "cat": "spirit",
+    "cost": 1600
+  },
+  "upgrade_rapid_recharge": {
+    "cat": "spirit",
+    "cost": 3200
+  },
+  "upgrade_rapid_rounds": {
+    "cat": "weapon",
+    "cost": 800
+  },
+  "upgrade_rebirth": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_rechargingbullets": {
+    "cat": "weapon",
+    "cost": 1600
+  },
+  "upgrade_reduce_debuff_duration": {
+    "cat": "vitality",
+    "cost": 3200
+  },
+  "upgrade_regenerating_bullet_shield": {
+    "cat": "vitality",
+    "cost": 1600
+  },
+  "upgrade_regenerative_armor": {
+    "cat": "vitality",
+    "cost": 1600
+  },
+  "upgrade_reinforcing_casings": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_reload_speed": {
+    "cat": "weapon",
+    "cost": 1600
+  },
+  "upgrade_rescue_beam": {
+    "cat": "vitality",
+    "cost": 3200
+  },
+  "upgrade_resilience": {
+    "cat": "vitality",
+    "cost": 800
+  },
+  "upgrade_resonant_healing": {
+    "cat": "spirit",
+    "cost": 3200
+  },
+  "upgrade_restorative_locket": {
+    "cat": "vitality",
+    "cost": 1600
+  },
+  "upgrade_return_fire": {
+    "cat": "vitality",
+    "cost": 1600
+  },
+  "upgrade_ricochet": {
+    "cat": "weapon",
+    "cost": 6400
+  },
+  "upgrade_rocket_booster": {
+    "cat": "vitality",
+    "cost": 3200
+  },
+  "upgrade_rocket_boots": {
+    "cat": "vitality",
+    "cost": 3200
+  },
+  "upgrade_runed_gauntlets": {
+    "cat": "weapon",
+    "cost": 6400
+  },
+  "upgrade_rupture": {
+    "cat": "spirit",
+    "cost": 3200
+  },
+  "upgrade_self_bubble": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_shadow_step": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_shadow_strike": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_sharpshooter": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_shivas_bracelet": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_shrink_ray": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_silencer": {
+    "cat": "weapon",
+    "cost": 6400
+  },
+  "upgrade_siphon_bullets": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_slow_immunity": {
+    "cat": "vitality",
+    "cost": 1600
+  },
+  "upgrade_slowing_bullets": {
+    "cat": "weapon",
+    "cost": 1600
+  },
+  "upgrade_slowing_tech": {
+    "cat": "spirit",
+    "cost": 800
+  },
+  "upgrade_small_attack_speed": {
+    "cat": "weapon",
+    "cost": 800
+  },
+  "upgrade_soaring_spirit": {
+    "cat": "spirit",
+    "cost": 1600
+  },
+  "upgrade_spellbreaker": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_spellshield": {
+    "cat": "vitality",
+    "cost": 3200
+  },
+  "upgrade_spellslinger_headshots": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_spirit_bubble": {
+    "cat": "vitality",
+    "cost": 1600
+  },
+  "upgrade_spirit_burn": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_spirit_sap": {
+    "cat": "spirit",
+    "cost": 1600
+  },
+  "upgrade_spirit_snatch": {
+    "cat": "spirit",
+    "cost": 3200
+  },
+  "upgrade_split_shot": {
+    "cat": "weapon",
+    "cost": 1600
+  },
+  "upgrade_sprint_booster": {
+    "cat": "vitality",
+    "cost": 800
+  },
+  "upgrade_stabilizer": {
+    "cat": "weapon",
+    "cost": 800
+  },
+  "upgrade_stabilizing_tripod": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_stasis_bomb": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_superacolytes_glove": {
+    "cat": "spirit",
+    "cost": 3200
+  },
+  "upgrade_superior_stamina": {
+    "cat": "vitality",
+    "cost": 3200
+  },
+  "upgrade_suppressor": {
+    "cat": "spirit",
+    "cost": 1600
+  },
+  "upgrade_surging_power": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_target_stun": {
+    "cat": "spirit",
+    "cost": 3200
+  },
+  "upgrade_targeted_silence": {
+    "cat": "spirit",
+    "cost": 3200
+  },
+  "upgrade_tech_armor": {
+    "cat": "vitality",
+    "cost": 1600
+  },
+  "upgrade_tech_cleave": {
+    "cat": "spirit",
+    "cost": 3200
+  },
+  "upgrade_tech_damage_pulse": {
+    "cat": "spirit",
+    "cost": 3200
+  },
+  "upgrade_tech_defender": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_tech_defense_shredders": {
+    "cat": "weapon",
+    "cost": 1600
+  },
+  "upgrade_tech_overflow": {
+    "cat": "weapon",
+    "cost": 6400
+  },
+  "upgrade_tech_purge": {
+    "cat": "vitality",
+    "cost": 3200
+  },
+  "upgrade_tech_range": {
+    "cat": "spirit",
+    "cost": 3200
+  },
+  "upgrade_thermal_detonator": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_timeless_emblem": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_titan_round": {
+    "cat": "weapon",
+    "cost": 1600
+  },
+  "upgrade_toughness_3": {
+    "cat": "vitality",
+    "cost": 1600
+  },
+  "upgrade_toxic_bullets": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_transcendent_cooldown": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_trophy_collector": {
+    "cat": "vitality",
+    "cost": 1600
+  },
+  "upgrade_ultimate_burst": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_unstable_concoction": {
+    "cat": "spirit",
+    "cost": 6400
+  },
+  "upgrade_unstoppable": {
+    "cat": "vitality",
+    "cost": 6400
+  },
+  "upgrade_vampire": {
+    "cat": "vitality",
+    "cost": 1600
+  },
+  "upgrade_veil_walker": {
+    "cat": "vitality",
+    "cost": 3200
+  },
+  "upgrade_vex_barrier": {
+    "cat": "vitality",
+    "cost": 1600
+  },
+  "upgrade_warp_stone": {
+    "cat": "vitality",
+    "cost": 3200
+  },
+  "upgrade_weapon_backstabber": {
+    "cat": "weapon",
+    "cost": 1600
+  },
+  "upgrade_weapon_detention_ammo": {
+    "cat": "weapon",
+    "cost": 6400
+  },
+  "upgrade_weapon_eater": {
+    "cat": "weapon",
+    "cost": 1600
+  },
+  "upgrade_weapon_instant_reload": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_weapon_overdrive_clip": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_weapon_power_and_health_drain": {
+    "cat": "vitality",
+    "cost": 1600
+  },
+  "upgrade_weapon_shielding": {
+    "cat": "vitality",
+    "cost": 1600
+  },
+  "upgrade_weighted_shots": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "upgrade_withering_whip": {
+    "cat": "spirit",
+    "cost": 800
+  },
+  "weapon_upgrade_t1": {
+    "cat": "weapon",
+    "cost": 800
+  },
+  "weapon_upgrade_t2": {
+    "cat": "weapon",
+    "cost": 1600
+  },
+  "weapon_upgrade_t3": {
+    "cat": "weapon",
+    "cost": 3200
+  },
+  "weapon_upgrade_t4": {
+    "cat": "weapon",
+    "cost": 6400
+  },
+  "weapon_upgrade_t5": {
+    "cat": "weapon",
+    "cost": 6400
+  }
+}

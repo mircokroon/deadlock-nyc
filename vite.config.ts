@@ -4,6 +4,15 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
 
 export default defineConfig({
+  // Relative asset paths so the build works both at the GitHub Pages project
+  // URL (username.github.io/deadlock-nyc/) and at the apex custom domain
+  // (deadlock.nyc/) — neither needs a hardcoded base. Safe here because the app
+  // is a single page with no client-side routing.
+  base: "./",
+  // The parse worker is a module worker (`new Worker(..., { type: "module" })`)
+  // that code-splits the wasm-pack glue via dynamic import. Vite's default
+  // worker format is IIFE, which can't code-split — emit ES instead.
+  worker: { format: "es" },
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {

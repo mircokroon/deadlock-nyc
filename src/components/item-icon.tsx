@@ -5,7 +5,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
+import { assetUrl, cn } from "@/lib/utils";
 import itemIcons from "@/data/item-icons.json";
 import itemNames from "@/data/item-names.json";
 
@@ -46,7 +46,8 @@ export function ItemIcon({
   // precise icon URL (the optimized WebP under public/items). Anything not in
   // the manifest — or that fails to load — shows a muted placeholder rather than
   // a broken-image glyph.
-  const manifestUrl = ITEM_ICON_MANIFEST[abilityName];
+  const rawUrl = ITEM_ICON_MANIFEST[abilityName];
+  const manifestUrl = rawUrl ? assetUrl(rawUrl) : undefined;
   const label = itemDisplayName(abilityName);
   const [broken, setBroken] = React.useState(false);
   React.useEffect(() => {

@@ -40,11 +40,10 @@ let modulePromise: Promise<BoonModule> | null = null;
 
 function loadModule(): Promise<BoonModule> {
   if (!modulePromise) {
-    const url = new URL(
-      /* @vite-ignore */ "./pkg/boon_wasm.js",
-      import.meta.url,
-    ).href;
-    modulePromise = import(/* @vite-ignore */ url).then(async (mod) => {
+    // Let Vite bundle the wasm-pack glue + .wasm (emitted as hashed assets and
+    // URL-rewritten). A /* @vite-ignore */ runtime import would skip bundling,
+    // so the .wasm would be missing from the production build.
+    modulePromise = import("./pkg/boon_wasm.js").then(async (mod) => {
       const m = mod as unknown as BoonModule;
       await m.default();
       return m;

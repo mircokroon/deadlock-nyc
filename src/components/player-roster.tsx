@@ -7,7 +7,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
+import { assetUrl, cn } from "@/lib/utils";
 import heroPortraits from "@/data/hero-portraits.json";
 
 function SoulIcon({ className }: { className?: string }) {
@@ -70,7 +70,8 @@ export const TEAM_LOGOS: Record<number, string> = {
 const HERO_PORTRAITS = heroPortraits as Record<string, string>;
 
 export function heroPortraitUrl(heroId: number): string | null {
-  return HERO_PORTRAITS[String(heroId)] ?? null;
+  const url = HERO_PORTRAITS[String(heroId)];
+  return url ? assetUrl(url) : null;
 }
 
 export function compactNumber(n: number): string {
@@ -136,7 +137,7 @@ export function PlayerRoster({
 }) {
   const teamRoster = roster.filter((p) => p.team === team);
   const accent = TEAM_COLORS[team] ?? "#888";
-  const logo = TEAM_LOGOS[team];
+  const logo = assetUrl(TEAM_LOGOS[team]);
   const label = TEAM_NAMES[team] ?? `Team ${team}`;
   const won = winner != null && winner === team;
   const teamSouls = teamRoster.reduce(

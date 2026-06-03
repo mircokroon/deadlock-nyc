@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { assetUrl, cn } from "@/lib/utils";
 import abilityIcons from "@/data/ability-icons.json";
 
 // ability_name (as the ImportantAbilityUsed feed reports it, e.g.
@@ -7,7 +7,8 @@ import abilityIcons from "@/data/ability-icons.json";
 const ABILITY_ICON_MANIFEST = abilityIcons as Record<string, string>;
 
 export function abilityIconUrl(name: string): string | null {
-  return (name && ABILITY_ICON_MANIFEST[name]) || null;
+  const url = name ? ABILITY_ICON_MANIFEST[name] : undefined;
+  return url ? assetUrl(url) : null;
 }
 
 // Small inline icon for the ability feed.

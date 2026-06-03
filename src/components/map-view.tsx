@@ -22,7 +22,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
+import { assetUrl, cn } from "@/lib/utils";
 
 export interface PlayerPosition {
   slot: number;
@@ -530,7 +530,7 @@ export function MapView({
           {(Object.keys(LAYERS) as MapLayer[]).map((key) => (
             <img
               key={key}
-              src={LAYERS[key].src}
+              src={assetUrl(LAYERS[key].src)}
               alt={`Deadlock minimap (${key})`}
               width={1024}
               height={1024}

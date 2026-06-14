@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { AbilityIcon } from "@/components/ability-icon";
+import { AbilityIcon, prettifyAbilityName } from "@/components/ability-icon";
 import {
   OBJECTIVE_ICONS,
   URN_COLOR,
@@ -19,6 +19,9 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
 type EventTab = "kills" | "abilities" | "objectives" | "chat";
+
+// Future events (after the current tick) are shown but dimmed to this opacity.
+const FUTURE_OPACITY = "opacity-40";
 
 // Neutral (gold) accent for non-team objectives like the Mid-Boss.
 const NEUTRAL_COLOR = "#c9a227";
@@ -64,6 +67,7 @@ export function EventLog({
   const [abilityFilter, setAbilityFilter] = React.useState<Set<number>>(
     new Set(),
   );
+  const scrollRef = React.useRef<HTMLDivElement>(null);
 
   const heroById = React.useMemo(() => {
     const m = new Map<number, PlayerInfo>();
@@ -71,9 +75,11 @@ export function EventLog({
     return m;
   }, [players]);
 
-  // Events up to the current tick, hero-filtered, newest first.
+  // All events (not just past ones), hero-filtered, newest first. The current
+  // playhead is drawn as a divider inside the list and future events are
+  // dimmed, so the time filter that used to live here is gone.
   const visibleKills = React.useMemo(() => {
-    let out = killEvents.filter((e) => e.tick <= currentTick);
+    let out = killEvents;
     if (killFilter.size > 0) {
       out = out.filter(
         (e) =>
@@ -81,25 +87,25 @@ export function EventLog({
           killFilter.has(e.victim_hero_id),
       );
     }
-    return out.reverse();
-  }, [killEvents, currentTick, killFilter]);
+    return out.slice().reverse();
+  }, [killEvents, killFilter]);
 
   const visibleAbilities = React.useMemo(() => {
-    let out = abilityEvents.filter((e) => e.tick <= currentTick);
+    let out = abilityEvents;
     if (abilityFilter.size > 0) {
       out = out.filter((e) => abilityFilter.has(e.hero_id));
     }
-    return out.reverse();
-  }, [abilityEvents, currentTick, abilityFilter]);
+    return out.slice().reverse();
+  }, [abilityEvents, abilityFilter]);
 
   const visibleObjectives = React.useMemo(
-    () => objectiveEvents.filter((e) => e.tick <= currentTick).reverse(),
-    [objectiveEvents, currentTick],
+    () => objectiveEvents.slice().reverse(),
+    [objectiveEvents],
   );
 
   const visibleChat = React.useMemo(
-    () => chatEvents.filter((e) => e.tick <= currentTick).reverse(),
-    [chatEvents, currentTick],
+    () => chatEvents.slice().reverse(),
+    [chatEvents],
   );
 
   const toggle = (
@@ -114,8 +120,17 @@ export function EventLog({
     });
   };
 
+  const feedProps = {
+    currentTick,
+    formatTick,
+    scrollRef,
+    heroById,
+    onSeek,
+    onSelectPlayer,
+  };
+
   return (
-    <div className="flex w-72 flex-shrink-0 flex-col gap-2 sm:w-80">
+    <div className="flex min-w-[18rem] flex-1 flex-col gap-2">
       <Tabs value={tab} onValueChange={(v) => setTab(v as EventTab)}>
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="kills" className="px-1 text-xs">
@@ -143,44 +158,105 @@ export function EventLog({
         />
       )}
 
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-border bg-card">
+      <div
+        ref={scrollRef}
+        className="feed-scroll min-h-0 flex-1 overflow-y-auto rounded-md border border-border bg-card"
+      >
         {tab === "kills" ? (
-          <KillList
-            events={visibleKills}
-            heroById={heroById}
-            formatTick={formatTick}
-            onSeek={onSeek}
-            onSelectPlayer={onSelectPlayer}
-          />
+          <KillList events={visibleKills} {...feedProps} />
         ) : tab === "abilities" ? (
-          <AbilityList
-            events={visibleAbilities}
-            heroById={heroById}
-            formatTick={formatTick}
-            onSeek={onSeek}
-            onSelectPlayer={onSelectPlayer}
-          />
+          <AbilityList events={visibleAbilities} {...feedProps} />
         ) : tab === "objectives" ? (
-          <ObjectiveList
-            events={visibleObjectives}
-            heroById={heroById}
-            formatTick={formatTick}
-            onSeek={onSeek}
-            onSelectPlayer={onSelectPlayer}
-          />
+          <ObjectiveList events={visibleObjectives} {...feedProps} />
         ) : (
-          <ChatList
-            events={visibleChat}
-            heroById={heroById}
-            formatTick={formatTick}
-            onSeek={onSeek}
-            onSelectPlayer={onSelectPlayer}
-          />
+          <ChatList events={visibleChat} {...feedProps} />
         )}
       </div>
     </div>
   );
 }
+
+// Shared per-feed props bundle (everything the list components need beyond
+// their own `events`).
+interface FeedProps {
+  currentTick: number;
+  formatTick: (tick: number) => string;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+  heroById: Map<number, PlayerInfo>;
+  onSeek: (tick: number) => void;
+  onSelectPlayer: (heroId: number, tick: number) => void;
+}
+
+// Renders a newest-first event list with a "now" divider at the playhead and
+// future events dimmed. `events` must be sorted newest-first; the boundary is
+// the first event at or before the current tick. Whenever the playhead crosses
+// an event (the boundary moves) the divider is scrolled back into view.
+function Feed<T extends { tick: number }>({
+  events,
+  currentTick,
+  formatTick,
+  scrollRef,
+  empty,
+  renderRow,
+}: {
+  events: T[];
+  currentTick: number;
+  formatTick: (tick: number) => string;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+  empty: string;
+  renderRow: (event: T, future: boolean) => React.ReactNode;
+}) {
+  const dividerRef = React.useRef<HTMLLIElement>(null);
+  // Events [0, boundary) are future (tick > current); [boundary, end] are past.
+  const b = events.findIndex((e) => e.tick <= currentTick);
+  const boundary = b === -1 ? events.length : b;
+
+  // Keep the playhead in view as it advances. Scoped to the feed's scroll
+  // container (never the page) and only fires when the boundary changes, so
+  // it's quiet while paused — leaving the user free to scroll the history.
+  React.useLayoutEffect(() => {
+    const c = scrollRef.current;
+    const d = dividerRef.current;
+    if (!c || !d) return;
+    const cRect = c.getBoundingClientRect();
+    const dRect = d.getBoundingClientRect();
+    c.scrollTop += dRect.top - cRect.top - c.clientHeight * 0.4;
+  }, [boundary, scrollRef]);
+
+  if (events.length === 0) return <EmptyFeed message={empty} />;
+
+  const divider = <NowDivider ref={dividerRef} label={formatTick(currentTick)} />;
+  return (
+    <ul className="divide-y divide-border text-xs">
+      {events.map((e, i) => (
+        <React.Fragment key={`${e.tick}-${i}`}>
+          {i === boundary && divider}
+          {renderRow(e, i < boundary)}
+        </React.Fragment>
+      ))}
+      {boundary === events.length && divider}
+    </ul>
+  );
+}
+
+// The playhead marker between past and future events: an accent rule labelled
+// with the current match clock.
+const NowDivider = React.forwardRef<HTMLLIElement, { label: string }>(
+  function NowDivider({ label }, ref) {
+    return (
+      <li ref={ref} className="bg-primary/5">
+        <div className="flex items-center gap-2 px-2 py-1">
+          <span className="h-px flex-1 bg-primary/40" />
+          <span className="flex items-center gap-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-primary tabular-nums">
+            <span className="size-1.5 rounded-full bg-primary" />
+            now · {label}
+          </span>
+          <span className="h-px flex-1 bg-primary/40" />
+        </div>
+      </li>
+    );
+  },
+);
 
 // Two rows of hero portraits (one per team). Click to focus the feed on that
 // hero; with nothing selected the feed shows everyone.
@@ -247,16 +323,19 @@ function EmptyFeed({ message }: { message: string }) {
   );
 }
 
-// Shared clickable row scaffold: click seeks; name buttons also open the player.
+// Shared clickable row scaffold: click seeks; name buttons also open the
+// player. `future` dims rows that haven't happened yet at the current tick.
 function EventRow({
   tick,
   formatTick,
   onSeek,
+  future,
   children,
 }: {
   tick: number;
   formatTick: (tick: number) => string;
   onSeek: (tick: number) => void;
+  future?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -272,7 +351,10 @@ function EventRow({
           }
         }}
         title="Jump to this moment"
-        className="flex w-full cursor-pointer items-center gap-2 px-2 py-1.5 text-left transition-colors hover:bg-accent/40 focus-visible:bg-accent/40 focus-visible:outline-none"
+        className={cn(
+          "flex w-full cursor-pointer items-center gap-2 px-2 py-1.5 text-left transition-colors hover:bg-accent/40 focus-visible:bg-accent/40 focus-visible:outline-none",
+          future && FUTURE_OPACITY,
+        )}
       >
         <span className="flex-shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
           [{formatTick(tick)}]
@@ -285,29 +367,29 @@ function EventRow({
 
 function KillList({
   events,
-  heroById,
+  currentTick,
   formatTick,
+  scrollRef,
+  heroById,
   onSeek,
   onSelectPlayer,
-}: {
-  events: KillEvent[];
-  heroById: Map<number, PlayerInfo>;
-  formatTick: (tick: number) => string;
-  onSeek: (tick: number) => void;
-  onSelectPlayer: (heroId: number, tick: number) => void;
-}) {
-  if (events.length === 0) return <EmptyFeed message="No kills yet." />;
+}: FeedProps & { events: KillEvent[] }) {
   return (
-    <ul className="divide-y divide-border text-xs">
-      {events.map((e, i) => {
+    <Feed
+      events={events}
+      currentTick={currentTick}
+      formatTick={formatTick}
+      scrollRef={scrollRef}
+      empty="No kills."
+      renderRow={(e, future) => {
         const attacker = heroById.get(e.attacker_hero_id);
         const victim = heroById.get(e.victim_hero_id);
         return (
           <EventRow
-            key={`${e.tick}-${i}`}
             tick={e.tick}
             formatTick={formatTick}
             onSeek={onSeek}
+            future={future}
           >
             <HeroChip
               hero={attacker}
@@ -328,35 +410,35 @@ function KillList({
             />
           </EventRow>
         );
-      })}
-    </ul>
+      }}
+    />
   );
 }
 
 function AbilityList({
   events,
-  heroById,
+  currentTick,
   formatTick,
+  scrollRef,
+  heroById,
   onSeek,
   onSelectPlayer,
-}: {
-  events: AbilityEvent[];
-  heroById: Map<number, PlayerInfo>;
-  formatTick: (tick: number) => string;
-  onSeek: (tick: number) => void;
-  onSelectPlayer: (heroId: number, tick: number) => void;
-}) {
-  if (events.length === 0) return <EmptyFeed message="No abilities yet." />;
+}: FeedProps & { events: AbilityEvent[] }) {
   return (
-    <ul className="divide-y divide-border text-xs">
-      {events.map((e, i) => {
+    <Feed
+      events={events}
+      currentTick={currentTick}
+      formatTick={formatTick}
+      scrollRef={scrollRef}
+      empty="No abilities."
+      renderRow={(e, future) => {
         const hero = heroById.get(e.hero_id);
         return (
           <EventRow
-            key={`${e.tick}-${i}`}
             tick={e.tick}
             formatTick={formatTick}
             onSeek={onSeek}
+            future={future}
           >
             <HeroChip
               hero={hero}
@@ -367,32 +449,32 @@ function AbilityList({
             />
             <AbilityIcon name={e.ability_name} size={18} />
             <span className="min-w-0 flex-1 truncate text-muted-foreground">
-              {prettifyAbility(e.ability_name)}
+              {prettifyAbilityName(e.ability_name)}
             </span>
           </EventRow>
         );
-      })}
-    </ul>
+      }}
+    />
   );
 }
 
 function ObjectiveList({
   events,
-  heroById,
+  currentTick,
   formatTick,
+  scrollRef,
+  heroById,
   onSeek,
   onSelectPlayer,
-}: {
-  events: ObjectiveEvent[];
-  heroById: Map<number, PlayerInfo>;
-  formatTick: (tick: number) => string;
-  onSeek: (tick: number) => void;
-  onSelectPlayer: (heroId: number, tick: number) => void;
-}) {
-  if (events.length === 0) return <EmptyFeed message="No objectives yet." />;
+}: FeedProps & { events: ObjectiveEvent[] }) {
   return (
-    <ul className="divide-y divide-border text-xs">
-      {events.map((e, i) => {
+    <Feed
+      events={events}
+      currentTick={currentTick}
+      formatTick={formatTick}
+      scrollRef={scrollRef}
+      empty="No objectives."
+      renderRow={(e, future) => {
         const meta = OBJECTIVE_META[e.kind] ?? OBJECTIVE_META.objective;
         const Icon = OBJECTIVE_ICONS[e.kind] ?? OBJECTIVE_ICONS.objective;
         const color =
@@ -401,10 +483,10 @@ function ObjectiveList({
           e.killer_hero_id > 0 ? heroById.get(e.killer_hero_id) : undefined;
         return (
           <EventRow
-            key={`${e.tick}-${i}`}
             tick={e.tick}
             formatTick={formatTick}
             onSeek={onSeek}
+            future={future}
           >
             <Icon
               className="size-[18px] flex-shrink-0"
@@ -426,35 +508,35 @@ function ObjectiveList({
             ) : null}
           </EventRow>
         );
-      })}
-    </ul>
+      }}
+    />
   );
 }
 
 function ChatList({
   events,
-  heroById,
+  currentTick,
   formatTick,
+  scrollRef,
+  heroById,
   onSeek,
   onSelectPlayer,
-}: {
-  events: ChatEvent[];
-  heroById: Map<number, PlayerInfo>;
-  formatTick: (tick: number) => string;
-  onSeek: (tick: number) => void;
-  onSelectPlayer: (heroId: number, tick: number) => void;
-}) {
-  if (events.length === 0) return <EmptyFeed message="No chat yet." />;
+}: FeedProps & { events: ChatEvent[] }) {
   return (
-    <ul className="divide-y divide-border text-xs">
-      {events.map((e, i) => {
+    <Feed
+      events={events}
+      currentTick={currentTick}
+      formatTick={formatTick}
+      scrollRef={scrollRef}
+      empty="No chat."
+      renderRow={(e, future) => {
         const hero = e.hero_id > 0 ? heroById.get(e.hero_id) : undefined;
         const color = hero ? TEAM_COLORS[hero.team] : undefined;
         // Team chat gets a faint background in the sender's team color; all-chat
         // keeps the regular background.
         const bg = !e.all_chat && color ? `${color}2e` : undefined;
         return (
-          <li key={`${e.tick}-${i}`}>
+          <li>
             <div
               role="button"
               tabIndex={0}
@@ -467,7 +549,10 @@ function ChatList({
               }}
               title="Jump to this moment"
               style={bg ? { backgroundColor: bg } : undefined}
-              className="flex w-full cursor-pointer gap-2 px-2 py-1.5 text-left transition-colors hover:bg-accent/40 focus-visible:bg-accent/40 focus-visible:outline-none"
+              className={cn(
+                "flex w-full cursor-pointer gap-2 px-2 py-1.5 text-left transition-colors hover:bg-accent/40 focus-visible:bg-accent/40 focus-visible:outline-none",
+                future && FUTURE_OPACITY,
+              )}
             >
               <span className="mt-px flex-shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
                 [{formatTick(e.tick)}]
@@ -497,20 +582,9 @@ function ChatList({
             </div>
           </li>
         );
-      })}
-    </ul>
+      }}
+    />
   );
-}
-
-function prettifyAbility(name: string): string {
-  return name
-    .replace(/^citadel_ability_/, "")
-    .replace(/^ability_/, "")
-    .replace(/^citadel_/, "")
-    .split("_")
-    .filter(Boolean)
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
 }
 
 function HeroChip({

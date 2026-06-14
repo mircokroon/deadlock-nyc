@@ -97,6 +97,78 @@ fn objective_kind(class_name: &str) -> &'static str {
     }
 }
 
+/// Whether a damage-matrix `source_name` is one of Valve's coarse damage-type
+/// buckets (`Bullet`/`Ability`/`Melee`/`Misc`/`UnknownAbility`) rather than a
+/// specific source. Coarse buckets use Capitalized display names; specific
+/// sources use snake_case identifiers (e.g. `citadel_weapon_astro_set`). The
+/// matrix records each damage hit under both, so summing all rows double-counts
+/// — pick one. We use categories for the by-source bands and specific sources
+/// for the hero-vs-hero totals. Mirrors boon-python's `is_category_source`.
+fn is_category_source(name: &str) -> bool {
+    name.chars().next().is_some_and(char::is_uppercase) && !name.contains('_')
+}
+
+/// One post-match summary snapshot for a player: running totals at a sampled
+/// match time. Team/color is resolved frontend-side from the roster by
+/// `hero_id`. Emitted by `DemoParser::summary`.
+#[derive(Serialize)]
+struct SnapshotStat {
+    time_s: u32,
+    hero_id: u32,
+    net_worth: u32,
+    kills: u32,
+    deaths: u32,
+    assists: u32,
+    creep_kills: u32,
+    neutral_kills: u32,
+    player_damage: u32,
+    player_healing: u32,
+    denies: u32,
+    ability_points: u32,
+    // Per-source souls (gold + soul orbs) from `gold_sources`, for the player
+    // souls-by-source view. `souls_other` lumps the rare item/ability sources.
+    souls_players: u32,
+    souls_lane: u32,
+    souls_neutral: u32,
+    souls_boss: u32,
+    souls_treasure: u32,
+    souls_denies: u32,
+    souls_assists: u32,
+    souls_team_bonus: u32,
+    souls_other: u32,
+}
+
+/// Total hero-damage dealt from one hero to another over the whole match, from
+/// the post-match damage matrix (specific sources only, so no double-count).
+/// Powers the hero-vs-hero Matrix view.
+#[derive(Serialize)]
+struct DamagePair {
+    dealer_hero: u32,
+    target_hero: u32,
+    damage: u32,
+}
+
+/// A dealer hero's cumulative damage in one coarse source category
+/// (`Bullet`/`Ability`/`Melee`/`Misc`/…), summed over all targets and sampled
+/// at `damage_sample_times`. Powers the Graph view's damage-by-source bands.
+#[derive(Serialize)]
+struct DamageSourceSeries {
+    hero_id: u32,
+    source: String,
+    values: Vec<u32>,
+}
+
+#[derive(Serialize)]
+struct SummaryResult {
+    snapshots: Vec<SnapshotStat>,
+    /// Shared time axis (seconds) for `damage_by_source` cumulative series.
+    damage_sample_times: Vec<u32>,
+    /// Hero-vs-hero total damage (Matrix view).
+    damage_matrix: Vec<DamagePair>,
+    /// Per (hero, coarse category) cumulative damage series (Graph view).
+    damage_by_source: Vec<DamageSourceSeries>,
+}
+
 #[wasm_bindgen]
 impl DemoParser {
     #[wasm_bindgen(constructor)]
@@ -139,6 +211,182 @@ impl DemoParser {
             }
         }
         serde_wasm_bindgen::to_value(&winner).map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    /// Post-match summary from the demo's `PostMatchDetails` user message: the
+    /// per-player time-series snapshots (net worth, KDA, farm, damage, …) the
+    /// game records at intervals through the match. Returns empty `snapshots`
+    /// when the demo has no post-match details (e.g. an incomplete recording).
+    #[wasm_bindgen(js_name = summary)]
+    pub fn summary(&self) -> Result<JsValue, JsError> {
+        use boon_proto::proto::{
+            CCitadelUserMsgPostMatchDetails, CMsgMatchMetaDataContents,
+            CitadelUserMessageIds as Msg,
+        };
+        use prost::Message;
+
+        let events = self.inner.events(None).map_err(to_js_error)?;
+        let mut snapshots: Vec<SnapshotStat> = Vec::new();
+        let mut damage_sample_times: Vec<u32> = Vec::new();
+        let mut damage_matrix: Vec<DamagePair> = Vec::new();
+        let mut damage_by_source: Vec<DamageSourceSeries> = Vec::new();
+        for event in &events {
+            if event.msg_type != Msg::KEUserMsgPostMatchDetails as u32 {
+                continue;
+            }
+            let Ok(outer) =
+                CCitadelUserMsgPostMatchDetails::decode(event.payload.as_slice())
+            else {
+                continue;
+            };
+            let Some(details) = outer.match_details else {
+                continue;
+            };
+            let Ok(contents) = CMsgMatchMetaDataContents::decode(details.as_slice()) else {
+                continue;
+            };
+            let Some(match_info) = contents.match_info else {
+                continue;
+            };
+            for player in &match_info.players {
+                let hero_id = player.hero_id();
+                for st in &player.stats {
+                    // Souls per source = gold + orbs, keyed by the EGoldSource
+                    // enum (1=players, 2=lane, 3=neutrals, 4=bosses, 5=treasure,
+                    // 6=assists, 7=denies, 8=team_bonus, 9..13=rare items/abilities).
+                    let mut by = [0u32; 14];
+                    for gs in &st.gold_sources {
+                        let src = gs.source.unwrap_or(0);
+                        if (1..=13).contains(&src) {
+                            by[src as usize] += gs.gold() + gs.gold_orbs();
+                        }
+                    }
+                    snapshots.push(SnapshotStat {
+                        time_s: st.time_stamp_s(),
+                        hero_id,
+                        net_worth: st.net_worth(),
+                        kills: st.kills(),
+                        deaths: st.deaths(),
+                        assists: st.assists(),
+                        creep_kills: st.creep_kills(),
+                        neutral_kills: st.neutral_kills(),
+                        player_damage: st.player_damage(),
+                        player_healing: st.player_healing(),
+                        denies: st.denies(),
+                        ability_points: st.ability_points(),
+                        souls_players: by[1],
+                        souls_lane: by[2],
+                        souls_neutral: by[3],
+                        souls_boss: by[4],
+                        souls_treasure: by[5],
+                        souls_denies: by[7],
+                        souls_assists: by[6],
+                        souls_team_bonus: by[8],
+                        souls_other: by[9] + by[10] + by[11] + by[12] + by[13],
+                    });
+                }
+            }
+
+            // --- Damage matrix → hero-vs-hero totals + by-source series ----
+            // Per (dealer, source, target) the matrix stores a cumulative,
+            // right-aligned `damage` array over `sample_time_s`. Each hit is
+            // recorded under both a coarse category and a specific source:
+            // categories feed the by-source bands (clean handful of buckets),
+            // specific sources feed the hero-vs-hero totals (no double-count).
+            if let Some(matrix) = &match_info.damage_matrix {
+                let times = &matrix.sample_time_s;
+                let n = times.len();
+                damage_sample_times = times.clone();
+                let slot_to_hero: HashMap<u32, u32> = match_info
+                    .players
+                    .iter()
+                    .filter_map(|p| p.player_slot.map(|slot| (slot, p.hero_id())))
+                    .collect();
+                let (names, stats): (&[String], &[i32]) =
+                    match matrix.source_details.as_ref() {
+                        Some(sd) => {
+                            (sd.source_name.as_slice(), sd.stat_type.as_slice())
+                        }
+                        None => (&[], &[]),
+                    };
+                let mut pair_totals: HashMap<(u32, u32), u32> = HashMap::new();
+                let mut series: HashMap<(u32, String), Vec<u32>> = HashMap::new();
+                for dealer in &matrix.damage_dealers {
+                    let Some(&dhero) =
+                        slot_to_hero.get(&dealer.dealer_player_slot())
+                    else {
+                        continue;
+                    };
+                    if dhero == 0 {
+                        continue;
+                    }
+                    for source in &dealer.damage_sources {
+                        let idx = source.source_details_index() as usize;
+                        // EStatType: 0 = damage. The Matrix/by-source views are
+                        // about hero damage only.
+                        if stats.get(idx).copied().unwrap_or(0) != 0 {
+                            continue;
+                        }
+                        let name = names.get(idx).cloned().unwrap_or_default();
+                        let category = is_category_source(&name);
+                        for dtp in &source.damage_to_players {
+                            let arr = &dtp.damage;
+                            if arr.is_empty() {
+                                continue;
+                            }
+                            // Cumulative arrays cover the last `arr.len()` samples.
+                            let start = n.saturating_sub(arr.len());
+                            if category {
+                                let s = series
+                                    .entry((dhero, name.clone()))
+                                    .or_insert_with(|| vec![0u32; n]);
+                                for (k, &cum) in arr.iter().enumerate() {
+                                    let i = start + k;
+                                    if i < s.len() {
+                                        s[i] = s[i].saturating_add(cum);
+                                    }
+                                }
+                            } else if let Some(&thero) =
+                                slot_to_hero.get(&dtp.target_player_slot())
+                            {
+                                // Final cumulative value = total for this pair.
+                                if thero != 0 {
+                                    *pair_totals
+                                        .entry((dhero, thero))
+                                        .or_insert(0) +=
+                                        arr.last().copied().unwrap_or(0);
+                                }
+                            }
+                        }
+                    }
+                }
+                damage_matrix = pair_totals
+                    .into_iter()
+                    .map(|((dealer_hero, target_hero), damage)| DamagePair {
+                        dealer_hero,
+                        target_hero,
+                        damage,
+                    })
+                    .collect();
+                damage_by_source = series
+                    .into_iter()
+                    .map(|((hero_id, source), values)| DamageSourceSeries {
+                        hero_id,
+                        source,
+                        values,
+                    })
+                    .collect();
+            }
+
+            break; // a single PostMatchDetails carries the whole match
+        }
+        serde_wasm_bindgen::to_value(&SummaryResult {
+            snapshots,
+            damage_sample_times,
+            damage_matrix,
+            damage_by_source,
+        })
+        .map_err(|e| JsError::new(&e.to_string()))
     }
 
     #[wasm_bindgen(js_name = serializerFields)]
@@ -234,6 +482,23 @@ impl DemoParser {
         sample_every: u32,
         progress: &js_sys::Function,
     ) -> Result<JsValue, JsError> {
+        // Every ability a hero owns is its own networked entity — one class per
+        // ability (hundreds total). To track per-ability cooldowns we must decode
+        // them all; their class names come from the send tables (any class whose
+        // name contains "Ability"). Collected into an owned Vec that outlives the
+        // borrowed `&str` class filter below.
+        let ability_class_names: Vec<String> = self
+            .inner
+            .parse_send_tables()
+            .map(|sc| {
+                sc.serializers
+                    .keys()
+                    .filter(|n| n.contains("Ability"))
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+
         let class_filter: HashSet<&str> = [
             PAWN_CLASS,
             CONTROLLER_CLASS,
@@ -244,6 +509,7 @@ impl DemoParser {
         ]
         .into_iter()
         .chain(OBJ_CLASSES.iter().copied())
+        .chain(ability_class_names.iter().map(String::as_str))
         .collect();
 
         let step = sample_every.max(1) as i32;
@@ -265,8 +531,10 @@ impl DemoParser {
         let mut pawn_keys_resolved = false;
         let mut pk_x: Option<u64> = None;
         let mut pk_y: Option<u64> = None;
+        let mut pk_z: Option<u64> = None;
         let mut pk_cell_x: Option<u64> = None;
         let mut pk_cell_y: Option<u64> = None;
+        let mut pk_cell_z: Option<u64> = None;
         let mut pk_team: Option<u64> = None;
         let mut pk_hero: Option<u64> = None;
         let mut pk_life: Option<u64> = None;
@@ -285,6 +553,7 @@ impl DemoParser {
         let mut ck_assists: Option<u64> = None;
         let mut ck_damage: Option<u64> = None;
         let mut ck_healing: Option<u64> = None;
+        let mut ck_objective_damage: Option<u64> = None;
         let mut ck_health_max: Option<u64> = None;
         // (eValType key, value key) pairs for the 20 stat-modifier slots on
         // m_PlayerDataGlobal.m_vecStatViewerModifierValues.
@@ -384,6 +653,41 @@ impl DemoParser {
         let mut cur_pause_start: Option<i32> = None;
         let mut game_over_tick: Option<i32> = None;
         let mut regulation_ticks: Option<i32> = None;
+
+        // --- Active modifiers (buffs / debuffs) ---------------------------
+        // The networked "ActiveModifiers" string table holds one
+        // CModifierTableEntry per live modifier instance, delta-updated each
+        // tick. We diff it by serial number (mirroring boon-python's
+        // `active_modifiers`) and emit one span [start_tick, end_tick) per
+        // modifier applied to a player pawn. Each span is labeled by its
+        // *source* ability/item (`ability_subclass` resolves far more often
+        // than the modifier's own subclass) with the modifier's own name as a
+        // secondary label; spans that resolve to neither are dropped. Reading
+        // the string table is independent of the entity class filter.
+        let mut mod_idx_serial: HashMap<usize, u32> = HashMap::new();
+        let mut mod_open: HashMap<u32, OpenModifier> = HashMap::new();
+        let mut modifier_spans: Vec<ModifierSpan> = Vec::new();
+
+        // --- Ability cooldowns (per-ability entity state) -----------------
+        // Each ability entity carries cooldown/charge fields; we diff them every
+        // tick and emit a row only when they change (change-only, like the
+        // modifier table). Field keys differ per ability class, so they are
+        // resolved once per class and cached. Owner ehandle → pawn → hero.
+        struct AbilityKeys {
+            subclass_id: Option<u64>,
+            slot: Option<u64>,
+            cooldown_start: Option<u64>,
+            cooldown_end: Option<u64>,
+            remaining_charges: Option<u64>,
+            recharge_start: Option<u64>,
+            recharge_end: Option<u64>,
+            owner: Option<u64>,
+        }
+        let mut ability_keys_cache: HashMap<String, AbilityKeys> = HashMap::new();
+        // entity idx → last (cooldown_start, cooldown_end, remaining_charges,
+        // recharge_start, recharge_end), for change detection.
+        let mut abil_prev: HashMap<i32, (f32, f32, i32, f32, f32)> = HashMap::new();
+        let mut ability_ticks: Vec<AbilityTick> = Vec::new();
 
         self.inner
             .run_to_end_with_events_filtered(&class_filter, |ctx, events| {
@@ -556,17 +860,19 @@ impl DemoParser {
 
                     let (px, kx) = find("m_vecX").unzip();
                     let (py, ky) = find("m_vecY").unzip();
-                    // z / cell_z paths are kept for the debug `paths` output, but
-                    // the values aren't read per-tick, so their keys are dropped.
-                    let (pz, _) = find("m_vecZ").unzip();
+                    // z / cell_z are read per-tick too, to place heroes on the
+                    // surface vs the tunnels layer (see PlayerPosition.z).
+                    let (pz, kz) = find("m_vecZ").unzip();
                     let (pcx, kcx) = find("m_cellX").unzip();
                     let (pcy, kcy) = find("m_cellY").unzip();
-                    let (pcz, _) = find("m_cellZ").unzip();
+                    let (pcz, kcz) = find("m_cellZ").unzip();
 
                     pk_x = kx;
                     pk_y = ky;
+                    pk_z = kz;
                     pk_cell_x = kcx;
                     pk_cell_y = kcy;
+                    pk_cell_z = kcz;
                     pk_team = s.resolve_field_key("m_iTeamNum");
                     pk_hero = s.resolve_field_key(
                         "m_CCitadelHeroComponent.m_spawnedHero.m_nHeroID",
@@ -607,6 +913,8 @@ impl DemoParser {
                         s.resolve_field_key("m_PlayerDataGlobal.m_iHeroDamage");
                     ck_healing =
                         s.resolve_field_key("m_PlayerDataGlobal.m_iHeroHealing");
+                    ck_objective_damage = s
+                        .resolve_field_key("m_PlayerDataGlobal.m_iObjectiveDamage");
                     // Effective max health. The pawn's m_iMaxHealth is a base/
                     // stale value (current health exceeds it ~55% of ticks); the
                     // controller's m_iHealthMax already folds in level growth,
@@ -790,6 +1098,175 @@ impl DemoParser {
                                 });
                             }
                         }
+                    }
+                }
+
+                // --- Active modifiers: diff the ActiveModifiers table -----
+                // Runs every tick (not just sampled frames) so span
+                // boundaries are exact. We only re-decode the entries the
+                // delta touched this tick (`dirty_indices`) and keep an entry
+                // index → serial map: a removal is either an explicit
+                // `entry_type == 2` or a slot reused by a new serial — both
+                // are changes to that index, so both are caught here.
+                if let Some(table) = ctx.string_tables.find_table("ActiveModifiers") {
+                    use prost::Message;
+                    for &idx in table.dirty_indices() {
+                        let Some(entry) = table.entries.get(idx) else {
+                            continue;
+                        };
+                        let Some(data) =
+                            entry.user_data.as_ref().filter(|d| !d.is_empty())
+                        else {
+                            continue;
+                        };
+                        let Ok(m) = boon_proto::proto::CModifierTableEntry::decode(
+                            data.as_slice(),
+                        ) else {
+                            continue;
+                        };
+                        let Some(serial) = m.serial_number else { continue };
+
+                        // Slot reused by a different serial → the old modifier
+                        // left without an explicit removal entry.
+                        if let Some(old) = mod_idx_serial.get(&idx).copied()
+                            && old != serial
+                            && let Some(open) = mod_open.remove(&old)
+                        {
+                            modifier_spans.push(open.into_span(Some(ctx.tick)));
+                        }
+
+                        // Explicit removal (MODIFIER_ENTRY_TYPE_REMOVED == 2).
+                        if m.entry_type == Some(2) {
+                            mod_idx_serial.remove(&idx);
+                            if let Some(open) = mod_open.remove(&serial) {
+                                modifier_spans
+                                    .push(open.into_span(Some(ctx.tick)));
+                            }
+                            continue;
+                        }
+
+                        mod_idx_serial.insert(idx, serial);
+
+                        // Open a span only the first time we see this serial;
+                        // later updates (e.g. stack changes) keep apply-time
+                        // values, matching boon-python.
+                        if mod_open.contains_key(&serial) {
+                            continue;
+                        }
+
+                        let Some(parent_idx) =
+                            boon::protobuf_handle_index(m.parent)
+                        else {
+                            continue;
+                        };
+                        let Some(&hero_id) = pawn_to_hero.get(&parent_idx) else {
+                            continue;
+                        };
+
+                        let ability_id = m.ability_subclass.unwrap_or(0);
+                        let an = boon::ability_name(ability_id);
+                        let ability_name = if an == "ABILITY_NOT_FOUND" {
+                            String::new()
+                        } else {
+                            an.to_string()
+                        };
+                        let mn = boon::modifier_name(m.modifier_subclass.unwrap_or(0));
+                        let modifier_name = if mn == "MODIFIER_NOT_FOUND" {
+                            String::new()
+                        } else {
+                            mn.to_string()
+                        };
+                        // "Only show what resolves": need a label from either
+                        // the source ability/item or the modifier itself.
+                        if ability_name.is_empty() && modifier_name.is_empty() {
+                            continue;
+                        }
+
+                        let caster_hero_id = boon::protobuf_handle_index(m.caster)
+                            .and_then(|i| pawn_to_hero.get(&i).copied())
+                            .unwrap_or(0);
+
+                        mod_open.insert(
+                            serial,
+                            OpenModifier {
+                                hero_id,
+                                ability_id,
+                                ability_name,
+                                modifier_name,
+                                caster_hero_id,
+                                stacks: m.stack_count.unwrap_or(0),
+                                duration: m.duration.unwrap_or(-1.0),
+                                start_tick: ctx.tick,
+                            },
+                        );
+                    }
+                }
+
+                // --- Ability cooldown / charge state (change-only) ---------
+                // Walk only the ability entities that changed this tick; emit a
+                // row when an ability's cooldown/charge fields differ from last
+                // seen. Mirrors boon-python's `ability_ticks`. Runs every tick
+                // (not the sampled cadence) so a cast's exact tick is captured.
+                for &idx in ctx.entities.updated_indices() {
+                    let Some(entity) = ctx.entities.get(idx) else {
+                        continue;
+                    };
+                    if !entity.class_name.contains("Ability") {
+                        continue;
+                    }
+                    if !ability_keys_cache.contains_key(&entity.class_name) {
+                        let s = ctx.serializers.get(&entity.class_name);
+                        let r = |p: &str| s.and_then(|s| s.resolve_field_key(p));
+                        let ak = AbilityKeys {
+                            subclass_id: r("m_nSubclassID"),
+                            slot: r("m_eAbilitySlot"),
+                            cooldown_start: r("m_flCooldownStart"),
+                            cooldown_end: r("m_flCooldownEnd"),
+                            remaining_charges: r("m_iRemainingCharges"),
+                            recharge_start: r("m_flChargeRechargeStart"),
+                            recharge_end: r("m_flChargeRechargeEnd"),
+                            owner: r("m_hOwnerEntity"),
+                        };
+                        ability_keys_cache.insert(entity.class_name.clone(), ak);
+                    }
+                    let keys = &ability_keys_cache[&entity.class_name];
+                    // Real abilities expose cooldown + charges; other "Ability"
+                    // classes (bare bases etc.) don't — skip them.
+                    if keys.cooldown_end.is_none()
+                        || keys.remaining_charges.is_none()
+                    {
+                        continue;
+                    }
+                    let hero_id = entity
+                        .get_handle(keys.owner)
+                        .map(|h| (h & boon::ENTITY_HANDLE_INDEX_MASK) as i32)
+                        .and_then(|owner_idx| pawn_to_hero.get(&owner_idx).copied())
+                        .unwrap_or(0);
+                    if hero_id == 0 {
+                        continue;
+                    }
+                    let state = (
+                        get_f32(entity, keys.cooldown_start),
+                        get_f32(entity, keys.cooldown_end),
+                        get_i64(entity, keys.remaining_charges) as i32,
+                        get_f32(entity, keys.recharge_start),
+                        get_f32(entity, keys.recharge_end),
+                    );
+                    let changed =
+                        abil_prev.get(&idx).map(|p| *p != state).unwrap_or(true);
+                    if changed {
+                        ability_ticks.push(AbilityTick {
+                            tick: ctx.tick,
+                            hero_id,
+                            ability_id: get_i64(entity, keys.subclass_id) as u32,
+                            slot: get_i64(entity, keys.slot) as i32,
+                            cooldown_start: state.0,
+                            cooldown_end: state.1,
+                            remaining_charges: state.2,
+                            charge_recharge_start: state.3,
+                            charge_recharge_end: state.4,
+                        });
+                        abil_prev.insert(idx, state);
                     }
                 }
 
@@ -981,6 +1458,8 @@ impl DemoParser {
                                 assists: get_i64(entity, ck_assists) as i32,
                                 hero_damage: get_i64(entity, ck_damage) as i32,
                                 hero_healing: get_i64(entity, ck_healing) as i32,
+                                objective_damage: get_i64(entity, ck_objective_damage)
+                                    as i32,
                                 health_max: get_i64(entity, ck_health_max) as i32,
                                 bonus_health,
                                 spirit_power,
@@ -1053,13 +1532,15 @@ impl DemoParser {
                     }
                     let hero_id = pawn_to_hero.get(&idx).copied().unwrap_or(0);
 
-                    // Cell + offset are combined into world x/y here; the raw
-                    // components and z aren't used downstream, so they stay out
-                    // of the serialized frame to keep the frames array small.
+                    // Cell + offset are combined into world x/y/z here. z is
+                    // kept (unlike troopers/objectives) to layer heroes onto the
+                    // surface vs the tunnels minimap.
                     let raw_x = get_f32(entity, pk_x);
                     let raw_y = get_f32(entity, pk_y);
+                    let raw_z = get_f32(entity, pk_z);
                     let cx = get_i64(entity, pk_cell_x) as i32;
                     let cy = get_i64(entity, pk_cell_y) as i32;
+                    let cz = get_i64(entity, pk_cell_z) as i32;
 
                     let stats = stats_by_hero
                         .get(&hero_id)
@@ -1078,6 +1559,7 @@ impl DemoParser {
                         alive: get_i64(entity, pk_life) == 0,
                         x: cell_to_world(cx, raw_x),
                         y: cell_to_world(cy, raw_y),
+                        z: cell_to_world(cz, raw_z),
                         yaw,
                         pitch,
                         health: get_i64(entity, pk_health) as i32,
@@ -1096,6 +1578,7 @@ impl DemoParser {
                         assists: stats.assists,
                         hero_damage: stats.hero_damage,
                         hero_healing: stats.hero_healing,
+                        objective_damage: stats.objective_damage,
                         bonus_health: stats.bonus_health,
                         spirit_power: stats.spirit_power,
                         fire_rate: stats.fire_rate,
@@ -1201,6 +1684,13 @@ impl DemoParser {
             pause_intervals.push(PauseInterval { start, end });
         }
 
+        // Close any modifiers still active when the recording ended
+        // (end_tick = None), then order spans by start for a stable feed.
+        for (_, open) in mod_open {
+            modifier_spans.push(open.into_span(None));
+        }
+        modifier_spans.sort_by_key(|s| s.start_tick);
+
         // Resolve raw item events to hero-keyed events. Drop events whose
         // slot we never saw (rare; mostly events fired before a controller
         // had a hero assigned) and anything outside the changes we care
@@ -1273,6 +1763,18 @@ impl DemoParser {
             })
             .collect();
 
+        // Keep cooldown rows only for the heroes' signature abilities (the four
+        // the player panel shows); drop innate movement abilities and item
+        // actives. Built before `ability_slots` is consumed below.
+        let signature_abilities: HashSet<(i64, u32)> = ability_slots
+            .iter()
+            .flat_map(|(&hero, slots)| {
+                slots.iter().map(move |s| (hero, s.ability_id))
+            })
+            .collect();
+        ability_ticks
+            .retain(|a| signature_abilities.contains(&(a.hero_id, a.ability_id)));
+
         // Per-hero ability sets, sorted by hero_id for a stable order.
         let mut ability_slots_out: Vec<HeroAbilities> = ability_slots
             .into_iter()
@@ -1337,12 +1839,14 @@ impl DemoParser {
             ability_events,
             ability_slots: ability_slots_out,
             ability_upgrade_events,
+            ability_ticks,
             objective_events,
             objectives,
             objective_health: obj_health_events,
             neutral_camps,
             camp_state_events,
             chat_events,
+            modifier_spans,
             pause_intervals,
             game_over_tick,
             regulation_ticks,
@@ -1364,6 +1868,9 @@ struct PositionsResult {
     ability_slots: Vec<HeroAbilities>,
     /// Sparse ability upgrade-tier increases; reconstructed per tick like items.
     ability_upgrade_events: Vec<AbilityUpgradeEvent>,
+    /// Per-ability cooldown/charge state changes (change-only), tick-ordered.
+    /// The frontend reconstructs each ability's cooldown at the playback tick.
+    ability_ticks: Vec<AbilityTick>,
     /// Objective destructions + Mid-Boss kill, in tick order.
     objective_events: Vec<ObjectiveEvent>,
     /// Constant roster of objectives (position, kind, team, max health, spawn /
@@ -1377,6 +1884,9 @@ struct PositionsResult {
     camp_state_events: Vec<CampStateEvent>,
     /// Player chat (all + team), in tick order.
     chat_events: Vec<ChatEvent>,
+    /// Per-player active buff/debuff spans (from the ActiveModifiers table),
+    /// in start-tick order. Reconstructed per tick on the frontend.
+    modifier_spans: Vec<ModifierSpan>,
     /// Tick ranges during which the match was paused.
     pause_intervals: Vec<PauseInterval>,
     /// Tick of the first GameOver user message, if the demo contains one.
@@ -1438,6 +1948,22 @@ struct AbilityEvent {
     ability_name: String,
 }
 
+/// A change in one ability's cooldown/charge state. `cooldown_start`/`_end` are
+/// game-time seconds (the cooldown is active until game time reaches
+/// `cooldown_end`). Emitted only on change, per ability entity, tick-ordered.
+#[derive(Serialize)]
+struct AbilityTick {
+    tick: i32,
+    hero_id: i64,
+    ability_id: u32,
+    slot: i32,
+    cooldown_start: f32,
+    cooldown_end: f32,
+    remaining_charges: i32,
+    charge_recharge_start: f32,
+    charge_recharge_end: f32,
+}
+
 struct RawObjectiveEvent {
     tick: i32,
     kind: &'static str,
@@ -1462,6 +1988,55 @@ struct ChatEvent {
     hero_id: i64,
     all_chat: bool,
     text: String,
+}
+
+/// In-flight modifier being tracked while its ActiveModifiers entry is live;
+/// converted to a `ModifierSpan` when it's removed or the recording ends.
+struct OpenModifier {
+    hero_id: i64,
+    ability_id: u32,
+    ability_name: String,
+    modifier_name: String,
+    caster_hero_id: i64,
+    stacks: i32,
+    duration: f32,
+    start_tick: i32,
+}
+
+impl OpenModifier {
+    fn into_span(self, end_tick: Option<i32>) -> ModifierSpan {
+        ModifierSpan {
+            hero_id: self.hero_id,
+            start_tick: self.start_tick,
+            end_tick,
+            ability_id: self.ability_id,
+            ability_name: self.ability_name,
+            modifier_name: self.modifier_name,
+            caster_hero_id: self.caster_hero_id,
+            stacks: self.stacks,
+            duration: self.duration,
+        }
+    }
+}
+
+/// One modifier active on a player over [start_tick, end_tick); `end_tick` is
+/// None if it was still active when the recording ended. Labeled by its source
+/// ability/item (`ability_id` for the icon, `ability_name` — best name
+/// coverage) with the modifier's own resolved `modifier_name` as a secondary
+/// label (either may be empty, but never both). `caster_hero_id` is the
+/// applying hero (0 if none / not a player), `duration` is in seconds (-1 =
+/// indefinite), `stacks` is the count at apply time.
+#[derive(Serialize)]
+struct ModifierSpan {
+    hero_id: i64,
+    start_tick: i32,
+    end_tick: Option<i32>,
+    ability_id: u32,
+    ability_name: String,
+    modifier_name: String,
+    caster_hero_id: i64,
+    stacks: i32,
+    duration: f32,
 }
 
 /// An objective destruction. `kind` is a stable slug ("guardian", "walker",
@@ -1616,6 +2191,10 @@ struct PlayerPosition {
     alive: bool,
     x: f32,
     y: f32,
+    /// World height of the body origin. Used to place the hero on the surface
+    /// vs the tunnels layer: the underground/tunnel floor sits below z = 0,
+    /// the surface ground and structures above it.
+    z: f32,
     /// Look angles in degrees from m_angEyeAngles: yaw is the horizontal facing
     /// (0 = +X / east, CCW), pitch is the vertical look (wraps 0..360).
     yaw: f32,
@@ -1629,6 +2208,7 @@ struct PlayerPosition {
     assists: i32,
     hero_damage: i32,
     hero_healing: i32,
+    objective_damage: i32,
     bonus_health: f32,
     spirit_power: f32,
     fire_rate: f32,
@@ -1670,6 +2250,7 @@ struct PlayerStats {
     assists: i32,
     hero_damage: i32,
     hero_healing: i32,
+    objective_damage: i32,
     health_max: i32,
     bonus_health: f32,
     spirit_power: f32,

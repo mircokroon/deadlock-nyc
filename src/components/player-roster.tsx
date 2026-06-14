@@ -80,6 +80,223 @@ export function compactNumber(n: number): string {
   return String(n);
 }
 
+// Derived, cumulative-to-the-current-tick stats computed across frames (see
+// DemoView):
+//  • uptime   — share of elapsed regulation time the hero has been alive.
+//  • distance — world-space path length travelled.
+//  • kp       — kill participation: (kills + assists) / team kills, this tick.
+//  • teh      — time in enemy half: share of *alive* time spent past the
+//               midline (closer to the enemy Patron than their own).
+//  • dpm      — hero damage per elapsed regulation minute.
+//  • spm      — souls (net worth) per elapsed regulation minute.
+//  • spct     — soul percentage of the team: net worth / team net worth.
+//  • spd      — average speed: distance ÷ time alive (world units/sec).
+//  • depth    — map forwardness: avg position from own (0%) to enemy (100%) base.
+//  • dmgShare — share of the team's hero damage at this tick.
+//  • objpm    — objective damage per elapsed regulation minute.
+export interface DerivedStats {
+  uptime: number; // 0..100 (%)
+  distance: number; // world (Hammer) units
+  kp: number; // 0..100 (%)
+  teh: number; // 0..100 (%)
+  dpm: number; // hero damage / regulation minute
+  spm: number; // net worth / regulation minute
+  spct: number; // 0..100 (%) share of team net worth
+  spd: number; // world units / second (while alive)
+  depth: number; // 0..100 (%) own base → enemy base
+  dmgShare: number; // 0..100 (%) share of team hero damage
+  objpm: number; // objective damage / regulation minute
+}
+
+// A roster row's full data: the live per-tick stats plus the derived ones.
+export interface RosterRow {
+  live: PlayerPosition | undefined;
+  derived: DerivedStats | undefined;
+}
+
+// Per-player stat columns for the roster table. Columns are grouped into four
+// sets chosen by the Stats toggle (applied to both teams at once):
+//  • Basic    — combat & economy (KDA, souls, damage, healing).
+//  • Advanced — kill participation, uptime, damage rates & shares.
+//  • Econ     — net worth, souls/min, soul share, damage per net worth.
+//  • Move     — distance, speed, time in enemy half, map depth.
+// Every group renders the same number of columns so the table width is stable;
+// groups with fewer real stats are padded with blank columns on the right.
+type StatColumn = {
+  key: string;
+  label: string;
+  title: string;
+  render: (row: RosterRow) => React.ReactNode;
+};
+
+const roundPct = (v: number) => `${Math.round(v)}%`;
+
+export type StatGroup = "basic" | "advanced" | "econ" | "position";
+
+// Total columns per group — matches Basic, the widest set.
+const GROUP_WIDTH = 6;
+
+const K_COLUMN: StatColumn = {
+  key: "k",
+  label: "K",
+  title: "Kills",
+  render: ({ live }) => live?.kills ?? 0,
+};
+const D_COLUMN: StatColumn = {
+  key: "d",
+  label: "D",
+  title: "Deaths",
+  render: ({ live }) => live?.deaths ?? 0,
+};
+const A_COLUMN: StatColumn = {
+  key: "a",
+  label: "A",
+  title: "Assists",
+  render: ({ live }) => live?.assists ?? 0,
+};
+const SOUL_COLUMN: StatColumn = {
+  key: "soul",
+  label: "SOUL",
+  title: "Net worth",
+  render: ({ live }) => compactNumber(live?.net_worth ?? 0),
+};
+const DMG_COLUMN: StatColumn = {
+  key: "dmg",
+  label: "DMG",
+  title: "Hero damage",
+  render: ({ live }) => compactNumber(live?.hero_damage ?? 0),
+};
+const HEAL_COLUMN: StatColumn = {
+  key: "heal",
+  label: "HEAL",
+  title: "Hero healing",
+  render: ({ live }) => compactNumber(live?.hero_healing ?? 0),
+};
+const UPT_COLUMN: StatColumn = {
+  key: "upt",
+  label: "UPT",
+  title: "Uptime — % of elapsed regulation time spent alive",
+  render: ({ derived }) => roundPct(derived?.uptime ?? 0),
+};
+const DIST_COLUMN: StatColumn = {
+  key: "dist",
+  label: "DIST",
+  title: "Distance travelled (world units)",
+  render: ({ derived }) => compactNumber(Math.round(derived?.distance ?? 0)),
+};
+const SPD_COLUMN: StatColumn = {
+  key: "spd",
+  label: "SPD",
+  title: "Average speed — distance ÷ time alive (world units/sec)",
+  render: ({ derived }) => compactNumber(Math.round(derived?.spd ?? 0)),
+};
+const KP_COLUMN: StatColumn = {
+  key: "kp",
+  label: "KP",
+  title: "Kill participation — (kills + assists) ÷ team kills",
+  render: ({ derived }) => roundPct(derived?.kp ?? 0),
+};
+const TEH_COLUMN: StatColumn = {
+  key: "teh",
+  label: "TEH",
+  title: "Time in enemy half — % of alive time past the midline",
+  render: ({ derived }) => roundPct(derived?.teh ?? 0),
+};
+const DEPTH_COLUMN: StatColumn = {
+  key: "depth",
+  label: "DEPTH",
+  title: "Map depth — avg forwardness from own (0%) to enemy (100%) base",
+  render: ({ derived }) => roundPct(derived?.depth ?? 0),
+};
+const DPM_COLUMN: StatColumn = {
+  key: "dpm",
+  label: "DPM",
+  title: "Damage per minute — hero damage ÷ elapsed regulation minutes",
+  render: ({ derived }) => compactNumber(Math.round(derived?.dpm ?? 0)),
+};
+const DMG_SHARE_COLUMN: StatColumn = {
+  key: "dmgshare",
+  label: "DMG%",
+  title: "Damage share — hero damage ÷ team's hero damage",
+  render: ({ derived }) => roundPct(derived?.dmgShare ?? 0),
+};
+// Damage per death: hero damage ÷ deaths (a 0-death hero divides by 1, so the
+// value is their raw damage). Output weighted by survivability. Live-only.
+const DMG_PER_DEATH_COLUMN: StatColumn = {
+  key: "dpd",
+  label: "DMG/D",
+  title: "Damage per death — hero damage ÷ deaths",
+  render: ({ live }) =>
+    compactNumber(
+      Math.round((live?.hero_damage ?? 0) / Math.max(1, live?.deaths ?? 0)),
+    ),
+};
+const OBJ_PM_COLUMN: StatColumn = {
+  key: "objpm",
+  label: "OBJ/m",
+  title:
+    "Objective damage per minute — objective damage ÷ elapsed regulation minutes",
+  render: ({ derived }) => compactNumber(Math.round(derived?.objpm ?? 0)),
+};
+const SPM_COLUMN: StatColumn = {
+  key: "spm",
+  label: "SPM",
+  title: "Souls per minute — net worth ÷ elapsed regulation minutes",
+  render: ({ derived }) => compactNumber(Math.round(derived?.spm ?? 0)),
+};
+const SPCT_COLUMN: StatColumn = {
+  key: "spct",
+  label: "SPCT",
+  title: "Soul percentage — share of the team's net worth",
+  render: ({ derived }) => roundPct(derived?.spct ?? 0),
+};
+// Damage value: (hero + objective damage) per soul of net worth — how much
+// damage a hero converts each soul into. Uses live fields only.
+const DMG_PER_NW_COLUMN: StatColumn = {
+  key: "dmgnw",
+  label: "D/NW",
+  title: "Damage per net worth — (hero + objective damage) ÷ net worth",
+  render: ({ live }) => {
+    const nw = live?.net_worth ?? 0;
+    if (nw <= 0) return "—";
+    const dmg = (live?.hero_damage ?? 0) + (live?.objective_damage ?? 0);
+    return (dmg / nw).toFixed(1);
+  },
+};
+
+// A spacer column: empty header (no tooltip) and empty cells.
+function blankColumn(i: number): StatColumn {
+  return { key: `blank-${i}`, label: "", title: "", render: () => "" };
+}
+
+// Pad a group out to GROUP_WIDTH so every group is the same width.
+function pad(columns: StatColumn[]): StatColumn[] {
+  const out = [...columns];
+  while (out.length < GROUP_WIDTH) out.push(blankColumn(out.length));
+  return out;
+}
+
+const STAT_GROUPS: Record<StatGroup, StatColumn[]> = {
+  basic: [
+    K_COLUMN,
+    D_COLUMN,
+    A_COLUMN,
+    SOUL_COLUMN,
+    DMG_COLUMN,
+    HEAL_COLUMN,
+  ],
+  advanced: pad([
+    KP_COLUMN,
+    UPT_COLUMN,
+    DPM_COLUMN,
+    DMG_SHARE_COLUMN,
+    DMG_PER_DEATH_COLUMN,
+    OBJ_PM_COLUMN,
+  ]),
+  econ: pad([SOUL_COLUMN, SPM_COLUMN, SPCT_COLUMN, DMG_PER_NW_COLUMN]),
+  position: pad([DIST_COLUMN, SPD_COLUMN, TEH_COLUMN, DEPTH_COLUMN]),
+};
+
 function DiffBadge({ value }: { value: number }) {
   if (value === 0) return null;
   const positive = value > 0;
@@ -123,18 +340,23 @@ function HeroCell({ player }: { player: PlayerInfo }) {
 export function PlayerRoster({
   roster,
   stats,
+  derived,
   team,
   align,
   winner,
+  statGroup = "basic",
   onSelect,
 }: {
   roster: PlayerInfo[];
   stats: Map<number, PlayerPosition>;
+  derived?: Map<number, DerivedStats>;
   team: number;
   align: "left" | "right";
   winner?: number | null;
+  statGroup?: StatGroup;
   onSelect: (heroId: number) => void;
 }) {
+  const columns = STAT_GROUPS[statGroup];
   const teamRoster = roster.filter((p) => p.team === team);
   const accent = TEAM_COLORS[team] ?? "#888";
   const logo = assetUrl(TEAM_LOGOS[team]);
@@ -162,7 +384,7 @@ export function PlayerRoster({
   const apDiff = teamAp - otherAp;
 
   return (
-    <div className="flex w-80 flex-shrink-0 flex-col gap-2 sm:w-96">
+    <div className="flex w-full flex-shrink-0 flex-col gap-2">
       <div
         className={cn(
           "flex items-center gap-2",
@@ -226,34 +448,31 @@ export function PlayerRoster({
           <thead className="bg-muted text-muted-foreground">
             <tr>
               <th className="px-2 py-1.5 text-left font-medium">Hero</th>
-              <th className="px-1 py-1.5 text-right font-medium">K</th>
-              <th className="px-1 py-1.5 text-right font-medium">D</th>
-              <th className="px-1 py-1.5 text-right font-medium">A</th>
-              <th
-                className="px-1 py-1.5 text-right font-medium"
-                title="Net worth"
-              >
-                SOUL
-              </th>
-              <th
-                className="px-1 py-1.5 text-right font-medium"
-                title="Hero damage"
-              >
-                DMG
-              </th>
-              <th
-                className="px-2 py-1.5 text-right font-medium"
-                title="Hero healing"
-              >
-                HEAL
-              </th>
+              {columns.map((c, i) => (
+                <th
+                  key={c.key}
+                  className={cn(
+                    "py-1.5 text-right font-medium",
+                    i === columns.length - 1 ? "px-2" : "px-1",
+                  )}
+                >
+                  {c.label ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="cursor-default">{c.label}</span>
+                      </TooltipTrigger>
+                      <TooltipContent>{c.title}</TooltipContent>
+                    </Tooltip>
+                  ) : null}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {teamRoster.length === 0 ? (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={columns.length + 1}
                   className="px-2 py-2 text-center text-muted-foreground"
                 >
                   —
@@ -261,7 +480,10 @@ export function PlayerRoster({
               </tr>
             ) : (
               teamRoster.map((p, i) => {
-                const live = stats.get(p.hero_id);
+                const row: RosterRow = {
+                  live: stats.get(p.hero_id),
+                  derived: derived?.get(p.hero_id),
+                };
                 return (
                   <tr
                     key={`${p.hero_id}-${i}`}
@@ -272,24 +494,17 @@ export function PlayerRoster({
                     <td className="px-2 py-1.5">
                       <HeroCell player={p} />
                     </td>
-                    <td className="px-1 py-1.5 text-right">
-                      {live?.kills ?? 0}
-                    </td>
-                    <td className="px-1 py-1.5 text-right">
-                      {live?.deaths ?? 0}
-                    </td>
-                    <td className="px-1 py-1.5 text-right">
-                      {live?.assists ?? 0}
-                    </td>
-                    <td className="px-1 py-1.5 text-right">
-                      {compactNumber(live?.net_worth ?? 0)}
-                    </td>
-                    <td className="px-1 py-1.5 text-right">
-                      {compactNumber(live?.hero_damage ?? 0)}
-                    </td>
-                    <td className="px-2 py-1.5 text-right">
-                      {compactNumber(live?.hero_healing ?? 0)}
-                    </td>
+                    {columns.map((c, ci) => (
+                      <td
+                        key={c.key}
+                        className={cn(
+                          "py-1.5 text-right",
+                          ci === columns.length - 1 ? "px-2" : "px-1",
+                        )}
+                      >
+                        {c.render(row)}
+                      </td>
+                    ))}
                   </tr>
                 );
               })

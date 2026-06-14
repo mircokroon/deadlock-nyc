@@ -1,0 +1,35 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
+  <!-- deadlock.nyc social card. Source for og.png (regenerate with:
+       rsvg-convert -w 1200 -h 630 public/og.svg -o public/og.png). -->
+  <defs>
+    <style>
+      .sans { font-family: "Roboto", "Helvetica Neue", Helvetica, Arial, sans-serif; }
+    </style>
+  </defs>
+
+  <!-- Brand cream background + framed card, matching the app theme. -->
+  <rect width="1200" height="630" fill="#efdebf"/>
+  <rect x="36" y="36" width="1128" height="558" rx="28" fill="#e5d2af" stroke="#2f4442" stroke-width="3"/>
+
+  <!-- Team starburst motif (Archmother orange + Hidden King blue). -->
+  <g transform="translate(900 76) scale(1.7)">
+    <path d="M47.5547 0L58.3703 16.713L76.944 9.54915L75.8703 29.4275L95.1075 34.5491L82.5547 50L95.1075 65.4509L75.8703 70.5725L76.944 90.4509L58.3703 83.287L47.5547 100L36.7391 83.287L18.1654 90.4509L19.2391 70.5725L0.00186157 65.4509L12.5547 50L0.00186157 34.5491L19.2391 29.4275L18.1654 9.54915L36.7391 16.713L47.5547 0Z" fill="#e08438"/>
+  </g>
+  <g transform="translate(1006 226) scale(1.15)">
+    <path d="M47.5547 0L58.3703 16.713L76.944 9.54915L75.8703 29.4275L95.1075 34.5491L82.5547 50L95.1075 65.4509L75.8703 70.5725L76.944 90.4509L58.3703 83.287L47.5547 100L36.7391 83.287L18.1654 90.4509L19.2391 70.5725L0.00186157 65.4509L12.5547 50L0.00186157 34.5491L19.2391 29.4275L18.1654 9.54915L36.7391 16.713L47.5547 0Z" fill="#5b8df7"/>
+  </g>
+
+  <!-- Eyebrow + rule. -->
+  <text class="sans" x="92" y="232" fill="#3f5d4d" font-size="30" font-weight="600" letter-spacing="7">DEADLOCK REPLAY VIEWER</text>
+  <rect x="94" y="250" width="120" height="4" rx="2" fill="#2f4442"/>
+
+  <!-- Title. -->
+  <text class="sans" x="88" y="358" fill="#2f4442" font-size="106" font-weight="700">deadlock.nyc</text>
+
+  <!-- Tagline. -->
+  <text class="sans" x="92" y="430" fill="#3f5d4d" font-size="37" font-weight="400">Open a .dem and explore the match —</text>
+  <text class="sans" x="92" y="480" fill="#3f5d4d" font-size="37" font-weight="400">map, heatmaps, damage matrix &amp; timeline.</text>
+
+  <!-- Privacy strip. -->
+  <text class="sans" x="92" y="556" fill="#2f4442" font-size="28" font-weight="500">Runs 100% in your browser · nothing is uploaded</text>
+</svg>

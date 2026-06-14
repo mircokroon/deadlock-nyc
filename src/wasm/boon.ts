@@ -2,11 +2,67 @@ import type { PositionsResult } from "@/components/map-view";
 import type { PlayerInfo } from "@/components/player-roster";
 import type { ParseRequest, ParseResponse } from "./boon-worker";
 
+/** One post-match snapshot for a player (running totals at a sampled time).
+ * Team is resolved from the roster by `hero_id`. From `DemoParser::summary`. */
+export interface SnapshotStat {
+  time_s: number;
+  hero_id: number;
+  net_worth: number;
+  kills: number;
+  deaths: number;
+  assists: number;
+  creep_kills: number;
+  neutral_kills: number;
+  player_damage: number;
+  player_healing: number;
+  denies: number;
+  ability_points: number;
+  // Per-source souls (gold + orbs), for the player souls-by-source view.
+  souls_players: number;
+  souls_lane: number;
+  souls_neutral: number;
+  souls_boss: number;
+  souls_treasure: number;
+  souls_denies: number;
+  souls_assists: number;
+  souls_team_bonus: number;
+  souls_other: number;
+}
+
+/** Total hero-damage dealt from one hero to another over the whole match.
+ * Powers the hero-vs-hero Matrix view. From `DemoParser::summary`. */
+export interface DamagePair {
+  dealer_hero: number;
+  target_hero: number;
+  damage: number;
+}
+
+/** A dealer hero's cumulative damage in one coarse source category
+ * (Bullet/Ability/Melee/Misc/…), summed over targets and sampled at
+ * `MatchSummary.damage_sample_times`. Powers the Timeline damage-by-source view. */
+export interface DamageSourceSeries {
+  hero_id: number;
+  source: string;
+  values: number[];
+}
+
+/** Post-match summary. `snapshots` is empty if the demo lacks PostMatchDetails. */
+export interface MatchSummary {
+  snapshots: SnapshotStat[];
+  /** Shared time axis (seconds) for the `damage_by_source` cumulative series. */
+  damage_sample_times: number[];
+  /** Hero-vs-hero total damage (Matrix view). */
+  damage_matrix: DamagePair[];
+  /** Per (hero, coarse category) cumulative damage series (Timeline view). */
+  damage_by_source: DamageSourceSeries[];
+}
+
 export interface ParsedDemo {
   header: unknown;
   players: PlayerInfo[];
   positions: PositionsResult;
   winner: number | null;
+  summary: MatchSummary;
 }
 
 let worker: Worker | null = null;
@@ -40,13 +96,28 @@ function getWorker(): Worker {
           players: msg.players as PlayerInfo[],
           positions: msg.positions as PositionsResult,
           winner: msg.winner,
+          summary: msg.summary as MatchSummary,
         });
       } else {
         p.reject(new Error(msg.error));
       }
+      // Parsing is done and the results have been structured-cloned onto the
+      // main thread, so the worker is no longer needed. Its WASM linear memory
+      // holds the whole demo plus parse scratch (often 1 GB+) and never shrinks
+      // back — only terminating the worker returns it to the OS. We respawn it
+      // lazily on the next parseDemo (re-instantiating the small .wasm is cheap).
+      disposeWorkerIfIdle();
     };
   }
   return worker;
+}
+
+// Tear down the worker (and free its WASM heap) once nothing is in flight.
+function disposeWorkerIfIdle() {
+  if (worker && pending.size === 0) {
+    worker.terminate();
+    worker = null;
+  }
 }
 
 export function parseDemo(

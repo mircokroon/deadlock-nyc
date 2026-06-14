@@ -18,7 +18,7 @@ function itemSlugFromAbilityName(name: string): string {
 
 // Localized shop name (e.g. "Extra Charge") from the generated manifest, with
 // a prettified-slug fallback for anything not yet in localization.
-function itemDisplayName(abilityName: string): string {
+export function itemDisplayName(abilityName: string): string {
   if (!abilityName) return "";
   const name = ITEM_NAME_MANIFEST[abilityName];
   if (name) return name;

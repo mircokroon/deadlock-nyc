@@ -19,6 +19,7 @@ export type ParseResponse =
       players: unknown;
       positions: unknown;
       winner: number | null;
+      summary: unknown;
     }
   | { id: number; ok: false; error: string };
 
@@ -32,6 +33,7 @@ interface BoonModule {
       progress: (tick: number, total: number) => void,
     ): unknown;
     gameWinner(): number | null | undefined;
+    summary(): unknown;
     free(): void;
   };
 }
@@ -71,6 +73,19 @@ self.onmessage = async (e: MessageEvent<ParseRequest>) => {
     };
     const positions = parser.playerPositions(sampleEvery, onProgress);
     const winner = parser.gameWinner() ?? null;
+    // Defensive: a malformed/absent post-match summary must not fail the whole
+    // parse (the map/heatmap views don't depend on it).
+    let summary: unknown = {
+      snapshots: [],
+      damage_sample_times: [],
+      damage_matrix: [],
+      damage_by_source: [],
+    };
+    try {
+      summary = parser.summary();
+    } catch {
+      // keep the empty fallback
+    }
     parser.free();
     const reply: ParseResponse = {
       id,
@@ -79,6 +94,7 @@ self.onmessage = async (e: MessageEvent<ParseRequest>) => {
       players,
       positions,
       winner,
+      summary,
     };
     (self as unknown as Worker).postMessage(reply);
   } catch (err) {

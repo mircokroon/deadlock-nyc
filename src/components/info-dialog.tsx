@@ -38,11 +38,18 @@ export function InfoDialog({
               rel="noreferrer"
               className="text-primary underline-offset-4 hover:underline"
             >
-              boon
+              Boon
             </a>{" "}
             parser compiled to WebAssembly.
           </p>
           <p>Your demo files never leave your machine.</p>
+          <p className="border-t border-border pt-3 text-xs">
+            Deadlock and all related game content — imagery, icons, minimaps,
+            hero and item names, and other in-game assets — are the property of
+            Valve Corporation and are not covered by this license. This is an
+            unofficial, fan-made project that is not affiliated with or endorsed
+            by Valve.
+          </p>
         </div>
       </div>
     </div>

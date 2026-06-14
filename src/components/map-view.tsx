@@ -13,6 +13,8 @@ import {
   Swords,
   Trees,
   Users,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 
 import { heroPortraitUrl, TEAM_COLORS } from "@/components/player-roster";
@@ -31,6 +33,9 @@ export interface PlayerPosition {
   alive: boolean;
   x: number;
   y: number;
+  /** World height of the body origin. z < 0 = underground (tunnels layer);
+   * z >= 0 = surface. */
+  z: number;
   /** Look angles (deg): yaw = horizontal facing (0 = +X/east, CCW); pitch
    * wraps 0..360 (small/near-360 = level, ~90 = looking down). */
   yaw: number;
@@ -44,6 +49,8 @@ export interface PlayerPosition {
   assists: number;
   hero_damage: number;
   hero_healing: number;
+  /** Cumulative damage dealt to objectives (towers, walkers, patron, …). */
+  objective_damage: number;
   bonus_health: number;
   spirit_power: number;
   fire_rate: number;
@@ -69,6 +76,24 @@ export interface AbilityUpgradeEvent {
   hero_id: number;
   ability_id: number;
   level: number;
+}
+
+/**
+ * A change in one ability's cooldown/charge state (change-only — emitted only
+ * on the tick a field changes). `cooldown_start`/`cooldown_end` are game-time
+ * seconds; the ability is on cooldown until game time reaches `cooldown_end`.
+ * The frontend reconstructs the active cooldown at the playback tick.
+ */
+export interface AbilityTick {
+  tick: number;
+  hero_id: number;
+  ability_id: number;
+  slot: number;
+  cooldown_start: number;
+  cooldown_end: number;
+  remaining_charges: number;
+  charge_recharge_start: number;
+  charge_recharge_end: number;
 }
 
 export interface PositionFrame {
@@ -106,15 +131,37 @@ export interface PositionsResult {
   ability_events: AbilityEvent[];
   ability_slots: HeroAbilities[];
   ability_upgrade_events: AbilityUpgradeEvent[];
+  ability_ticks: AbilityTick[];
   objective_events: ObjectiveEvent[];
   objectives: ObjectiveInfo[];
   objective_health: ObjectiveHealthEvent[];
   neutral_camps: NeutralCamp[];
   camp_state_events: CampStateEvent[];
   chat_events: ChatEvent[];
+  modifier_spans: ModifierSpan[];
   pause_intervals: PauseInterval[];
   game_over_tick: number | null;
   regulation_ticks: number | null;
+}
+
+/**
+ * One buff/debuff active on a player over [start_tick, end_tick) (end_tick null
+ * = still active at the recording's end). Labeled by its source ability/item
+ * (`ability_id` for the icon, `ability_name` has the best name coverage); the
+ * modifier's own `modifier_name` is a secondary label. Either name may be empty
+ * but never both. `caster_hero_id` is the applying hero (0 = none / non-player),
+ * `duration` is in seconds (-1 = indefinite), `stacks` is the count at apply.
+ */
+export interface ModifierSpan {
+  hero_id: number;
+  start_tick: number;
+  end_tick: number | null;
+  ability_id: number;
+  ability_name: string;
+  modifier_name: string;
+  caster_hero_id: number;
+  stacks: number;
+  duration: number;
 }
 
 /** A neutral jungle camp. `size` is 1/2/3 (small/medium/large) → chevron count. */
@@ -259,8 +306,8 @@ export interface ObjectiveMarker {
 // Map world bounds extracted from the .vmap data: a 21504 × 21504 square
 // centered on the origin. World +Y is "up" on the minimap, so we flip Y
 // when projecting into image space.
-const WORLD_MIN = -10752;
-const WORLD_SIZE = 21504;
+export const WORLD_MIN = -10752;
+export const WORLD_SIZE = 21504;
 
 // Sizes are in viewBox (world) units. WORLD_SIZE = 21504, so a dot inner
 // radius of 450 ≈ 2.1% of the map width — roughly 17px on a 800px map.
@@ -286,6 +333,12 @@ export const URN_COLOR = "#22d3ee";
 
 // Lane trooper dot radius (world units) — small; counter-scaled to stay ~4px.
 const TROOPER_R = 95;
+
+// Height that splits the tunnels from the surface: heroes with z < 0 are
+// underground. A hero shown on the "other" layer (a tunnel hero on the surface
+// view, or vice versa) is dimmed to this opacity rather than hidden.
+const Z_TUNNEL_CUTOFF = 0;
+const OFF_LAYER_OPACITY = 0.45;
 
 // Toggleable map layers (the buttons in the map's upper-left).
 type LayerKey = "heroes" | "troopers" | "neutrals" | "objectives" | "urn";
@@ -323,9 +376,9 @@ const LAYER_TOGGLES: {
   },
 ];
 
-type MapLayer = "surface" | "tunnels";
+export type MapLayer = "surface" | "tunnels";
 
-const LAYERS: Record<MapLayer, { label: string; src: string }> = {
+export const LAYERS: Record<MapLayer, { label: string; src: string }> = {
   surface: {
     label: "Surface",
     src: "/minimap/minimap_midtown_mid_psd_dd4bcbf9.webp",
@@ -398,6 +451,27 @@ export function MapView({
   const reset = React.useCallback(() => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
+  }, []);
+
+  // Button zoom, centered on the map (pan scales about the center).
+  const zoomBy = React.useCallback((factor: number) => {
+    const prev = zoomRef.current;
+    const next = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prev * factor));
+    if (next === prev) return;
+    const el = containerRef.current;
+    setZoom(next);
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      const ratio = next / prev;
+      setPan(
+        clampPan(
+          next,
+          { x: panRef.current.x * ratio, y: panRef.current.y * ratio },
+          rect.width,
+          rect.height,
+        ),
+      );
+    }
   }, []);
 
   // Wheel zoom — bound via addEventListener so we can preventDefault to stop
@@ -610,6 +684,9 @@ export function MapView({
                 Drawn beneath the hero dots so heroes stay on top. */}
             {layers.objectives &&
               objectiveStates?.map((o, i) => {
+              // The tunnels are only relevant for the Mid-Boss pit; lane
+              // buildings live on the surface, so hide them down here.
+              if (layer === "tunnels" && o.kind !== "mid_boss") return null;
               const ocx = o.x - WORLD_MIN;
               const ocy = WORLD_SIZE - (o.y - WORLD_MIN);
               const major = o.kind === "patron" || o.kind === "mid_boss";
@@ -667,12 +744,19 @@ export function MapView({
               // zoomed-out (base) size — never larger than the starting size,
               // but bigger than if we let it keep shrinking as you zoom in.
               const dotScale = 1 / zoom;
+              // A hero belongs to whichever layer their height puts them on;
+              // when viewing the other layer they're dimmed (not hidden), and
+              // dying dims them further still.
+              const inTunnel = p.z < Z_TUNNEL_CUTOFF;
+              const onLayer = inTunnel === (layer === "tunnels");
+              const opacity =
+                (p.alive ? 1 : 0.35) * (onLayer ? 1 : OFF_LAYER_OPACITY);
               return (
                 <g
                   key={p.slot}
                   data-hero={p.hero_id}
                   transform={`translate(${cx} ${cy}) scale(${dotScale})`}
-                  opacity={p.alive ? 1 : 0.35}
+                  opacity={opacity}
                   onClick={
                     onSelectPlayer
                       ? () => onSelectPlayer(p.hero_id)
@@ -748,6 +832,7 @@ export function MapView({
             })}
             {layers.objectives &&
               objectiveMarkers?.map((o, i) => {
+              if (layer === "tunnels" && o.kind !== "mid_boss") return null;
               const cx = o.x - WORLD_MIN;
               const cy = WORLD_SIZE - (o.y - WORLD_MIN);
               // Marquee objectives read a little larger than lane buildings.
@@ -855,17 +940,39 @@ export function MapView({
           })}
         </div>
 
-        {zoom > 1 && (
+        {/* Zoom controls (scroll-to-zoom still works too). */}
+        <div className="absolute top-2 right-2 flex flex-col gap-1">
+          <button
+            type="button"
+            onClick={() => zoomBy(1.4)}
+            disabled={zoom >= MAX_ZOOM}
+            aria-label="Zoom in"
+            title="Zoom in"
+            className="rounded-md border border-border bg-background/80 p-1.5 text-foreground shadow-sm backdrop-blur transition-colors hover:bg-background disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ZoomIn className="size-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => zoomBy(1 / 1.4)}
+            disabled={zoom <= MIN_ZOOM}
+            aria-label="Zoom out"
+            title="Zoom out"
+            className="rounded-md border border-border bg-background/80 p-1.5 text-foreground shadow-sm backdrop-blur transition-colors hover:bg-background disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ZoomOut className="size-4" />
+          </button>
           <button
             type="button"
             onClick={reset}
+            disabled={zoom <= MIN_ZOOM}
             aria-label="Reset zoom"
             title="Reset zoom"
-            className="absolute top-2 right-2 rounded-md border border-border bg-background/80 p-1.5 text-foreground shadow-sm backdrop-blur transition-colors hover:bg-background"
+            className="rounded-md border border-border bg-background/80 p-1.5 text-foreground shadow-sm backdrop-blur transition-colors hover:bg-background disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Maximize className="size-4" />
           </button>
-        )}
+        </div>
       </div>
     </div>
   );

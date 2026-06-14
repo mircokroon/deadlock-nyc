@@ -2,6 +2,7 @@ import { Github, Info, Moon, Sun } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/components/theme-provider";
+import { ViewSwitcher, useViewMode } from "@/components/view-mode";
 
 const GITHUB_URL = "https://github.com/pnxenopoulos/boon";
 const X_URL = "https://x.com/peterxeno";
@@ -19,59 +20,75 @@ function XIcon() {
 
 export function Header({ onInfoClick }: { onInfoClick: () => void }) {
   const { theme, toggle } = useTheme();
+  const { demoLoaded } = useViewMode();
+
+  const iconButton =
+    "size-8 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground";
+
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-border bg-sidebar text-sidebar-foreground">
-      <div className="mx-auto flex h-10 max-w-6xl items-center justify-between px-4">
+      <div className="mx-auto flex h-10 max-w-6xl items-center gap-4 px-4">
         <a
           href="/"
-          className="text-sm font-medium tracking-tight text-sidebar-foreground hover:opacity-90"
+          className="flex-1 text-sm font-medium tracking-tight text-sidebar-foreground hover:opacity-90"
         >
           deadlock.nyc
         </a>
 
-        <div className="flex items-center gap-0.5">
+        {/* View switcher sits dead-center, but only once a demo is loaded. */}
+        <div className="flex flex-shrink-0 items-center justify-center">
+          {demoLoaded && <ViewSwitcher />}
+        </div>
+
+        <div className="flex flex-1 items-center justify-end gap-0.5">
+          {/* App controls. */}
           <Button
             variant="ghost"
             size="icon"
             onClick={toggle}
             aria-label="Toggle theme"
-            className="size-8 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            className={iconButton}
           >
             {theme === "dark" ? <Sun /> : <Moon />}
           </Button>
-
-          <Button
-            variant="ghost"
-            size="icon"
-            asChild
-            aria-label="GitHub"
-            className="size-8 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-          >
-            <a href={GITHUB_URL} target="_blank" rel="noreferrer">
-              <Github />
-            </a>
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="icon"
-            asChild
-            aria-label="X (Twitter)"
-            className="size-8 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-          >
-            <a href={X_URL} target="_blank" rel="noreferrer">
-              <XIcon />
-            </a>
-          </Button>
-
           <Button
             variant="ghost"
             size="icon"
             onClick={onInfoClick}
             aria-label="About"
-            className="size-8 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            className={iconButton}
           >
             <Info />
+          </Button>
+
+          {/* Social links, separated into their own group. The sidebar bg is
+              theme-invariant, so the divider uses a sidebar-relative color to
+              read identically in light and dark. */}
+          <span
+            className="mx-1.5 h-5 w-px bg-sidebar-foreground/20"
+            aria-hidden="true"
+          />
+          <Button
+            variant="ghost"
+            size="icon"
+            asChild
+            aria-label="GitHub"
+            className={iconButton}
+          >
+            <a href={GITHUB_URL} target="_blank" rel="noreferrer">
+              <Github />
+            </a>
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            asChild
+            aria-label="X (Twitter)"
+            className={iconButton}
+          >
+            <a href={X_URL} target="_blank" rel="noreferrer">
+              <XIcon />
+            </a>
           </Button>
         </div>
       </div>

@@ -3,11 +3,61 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link
-      rel="icon"
-      href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌆</text></svg>"
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
+    <link rel="icon" href="/favicon-16.png" sizes="16x16" type="image/png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- Primary meta / SEO -->
+    <title>deadlock.nyc — Deadlock Demo Viewer in your browser</title>
+    <meta
+      name="description"
+      content="Open Deadlock .dem replays right in your browser — explore the match map, heatmaps, hero damage matrix, item builds and a full timeline. 100% client-side; nothing is uploaded."
     />
-    <title>deadlock.nyc</title>
+    <link rel="canonical" href="https://deadlock.nyc/" />
+    <meta name="robots" content="index, follow" />
+    <meta name="theme-color" content="#2f4442" />
+
+    <!-- Open Graph (link previews on Discord, Slack, Facebook, …) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="deadlock.nyc" />
+    <meta property="og:title" content="deadlock.nyc — Deadlock Demo Viewer" />
+    <meta
+      property="og:description"
+      content="Open Deadlock .dem replays right in your browser — match map, heatmaps, hero damage matrix, item builds and a full timeline. 100% client-side; nothing is uploaded."
+    />
+    <meta property="og:url" content="https://deadlock.nyc/" />
+    <meta property="og:image" content="https://deadlock.nyc/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="deadlock.nyc — a browser-based Deadlock demo viewer"
+    />
+
+    <!-- Twitter / X card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="deadlock.nyc — Deadlock Demo Viewer" />
+    <meta
+      name="twitter:description"
+      content="Open Deadlock .dem replays right in your browser — map, heatmaps, damage matrix and a full timeline. Nothing is uploaded."
+    />
+    <meta name="twitter:image" content="https://deadlock.nyc/og.png" />
+
+    <!-- Structured data: a free, browser-based web application -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "deadlock.nyc",
+        "url": "https://deadlock.nyc/",
+        "description": "A browser-based viewer for Deadlock .dem replay files. Explore the match map, heatmaps, hero damage matrix, item builds and a full timeline — entirely client-side, with nothing uploaded.",
+        "applicationCategory": "GameApplication",
+        "operatingSystem": "Any (modern web browser)",
+        "browserRequirements": "Requires JavaScript and WebAssembly",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+      }
+    </script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

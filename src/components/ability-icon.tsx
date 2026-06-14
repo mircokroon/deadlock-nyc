@@ -11,6 +11,19 @@ export function abilityIconUrl(name: string): string | null {
   return url ? assetUrl(url) : null;
 }
 
+// "citadel_ability_zip_line" / "ability_foo" -> "Zip Line" / "Foo". Shared by
+// the ability feed and the player-detail ability tooltips.
+export function prettifyAbilityName(name: string): string {
+  return name
+    .replace(/^citadel_ability_/, "")
+    .replace(/^ability_/, "")
+    .replace(/^citadel_/, "")
+    .split("_")
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
 // Small inline icon for the ability feed.
 //
 // These source images (m_strAbilityImage) are monochrome alpha-mask glyphs: the

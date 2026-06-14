@@ -12,8 +12,9 @@ import { cn } from "@/lib/utils";
 
 const TICKS_PER_SECOND = 64;
 
-// Playback rate multipliers applied to the inter-frame delay.
-const SPEED_OPTIONS = [0.5, 1, 2, 4, 8];
+// Playback rate multipliers applied to the inter-frame delay. Exported so the
+// ↑/↓ keyboard shortcuts can step through the same set.
+export const SPEED_OPTIONS = [0.5, 1, 2, 4, 8];
 // Skip amounts for the back/forward buttons, in seconds (stored as ticks).
 const STEP_OPTIONS = [5, 10, 30, 60];
 
@@ -71,7 +72,7 @@ export function PlaybackConfig({
           aria-label="Playback settings"
           className="absolute bottom-full right-0 z-50 mb-2 w-56 rounded-md border border-border bg-popover p-3 text-popover-foreground shadow-md"
         >
-          <Field label="Playback speed">
+          <Field label="Playback speed" hint="↑ / ↓">
             <div className="grid grid-cols-5 gap-1">
               {SPEED_OPTIONS.map((s) => (
                 <Segment
@@ -108,17 +109,20 @@ export function PlaybackConfig({
 
 function Field({
   label,
+  hint,
   className,
   children,
 }: {
   label: string;
+  hint?: string;
   className?: string;
   children: React.ReactNode;
 }) {
   return (
     <div className={className}>
-      <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
+      <p className="mb-1.5 flex items-center justify-between text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <span>{label}</span>
+        {hint && <span className="font-mono normal-case">{hint}</span>}
       </p>
       {children}
     </div>

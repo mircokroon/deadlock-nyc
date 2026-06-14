@@ -1,9 +1,13 @@
 import * as React from "react";
 import { ChevronDown, ChevronLeft } from "lucide-react";
 
-import { AbilityIcon } from "@/components/ability-icon";
-import { ItemIcon } from "@/components/item-icon";
-import type { AbilitySlot, PlayerPosition } from "@/components/map-view";
+import { AbilityIcon, prettifyAbilityName } from "@/components/ability-icon";
+import { ItemIcon, itemDisplayName } from "@/components/item-icon";
+import type {
+  AbilitySlot,
+  ModifierSpan,
+  PlayerPosition,
+} from "@/components/map-view";
 import {
   heroPortraitUrl,
   TEAM_COLORS,
@@ -11,6 +15,11 @@ import {
   type HeroItems,
   type PlayerInfo,
 } from "@/components/player-roster";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import itemStats from "@/data/item-stats.json";
 
@@ -147,6 +156,80 @@ const SLOT_COUNT = 10;
 const ABILITY_PIXELS = 36;
 // Abilities have three upgrade tiers; we render one segment per tier.
 const ABILITY_TIERS = 3;
+const TICKS_PER_SECOND = 64;
+
+/** One reconstructed cooldown period for an ability, in absolute ticks. */
+export type CooldownSpan = {
+  /** Tick the cooldown started (the cast). */
+  start: number;
+  /** Tick the ability becomes available again. */
+  end: number;
+  /** Total cooldown length in seconds (the ring's full sweep). */
+  total: number;
+};
+
+/** Charge count over time for a charge-based ability (valid from `startTick`). */
+export type ChargeState = {
+  startTick: number;
+  /** Available charges at this point. */
+  count: number;
+  /** Tick the regenerating charge began filling (anchor for its bar). */
+  rechargeStart: number;
+  /** Tick the regenerating charge completes. */
+  rechargeEnd: number;
+  recharging: boolean;
+};
+
+/** Reconstructed cooldown + charge timeline for one ability. */
+export type AbilityCooldown = {
+  /** Max charges seen; ≥ 2 marks a charge-based ability (show pills, no ring). */
+  maxCharges: number;
+  cooldowns: CooldownSpan[];
+  charges: ChargeState[];
+};
+
+// The cooldown active at `tick`, or null if the ability is ready. Spans are
+// tick-ordered and non-overlapping, so the latest one starting at or before
+// `tick` is the only candidate.
+function activeCooldown(
+  spans: CooldownSpan[] | undefined,
+  tick: number,
+): { remaining: number; total: number } | null {
+  if (!spans) return null;
+  for (let i = spans.length - 1; i >= 0; i--) {
+    if (spans[i].start <= tick) {
+      return tick < spans[i].end
+        ? {
+            remaining: (spans[i].end - tick) / TICKS_PER_SECOND,
+            total: spans[i].total,
+          }
+        : null;
+    }
+  }
+  return null;
+}
+
+// Charge count + recharge progress (0..1 for the regenerating charge) at `tick`.
+function chargeAt(
+  states: ChargeState[],
+  tick: number,
+  maxCharges: number,
+): { count: number; recharging: boolean; progress: number } | null {
+  for (let i = states.length - 1; i >= 0; i--) {
+    const s = states[i];
+    if (s.startTick <= tick) {
+      const recharging =
+        s.recharging && s.count < maxCharges && tick < s.rechargeEnd;
+      const span = s.rechargeEnd - s.rechargeStart;
+      const progress =
+        recharging && span > 0
+          ? Math.min(1, Math.max(0, (tick - s.rechargeStart) / span))
+          : 0;
+      return { count: s.count, recharging, progress };
+    }
+  }
+  return null;
+}
 
 export function PlayerDetail({
   player,
@@ -154,6 +237,10 @@ export function PlayerDetail({
   items,
   abilities,
   abilityLevels,
+  abilityCooldowns,
+  modifiers,
+  players,
+  tick,
   onBack,
 }: {
   player: PlayerInfo;
@@ -161,6 +248,11 @@ export function PlayerDetail({
   items: HeroItems | undefined;
   abilities: AbilitySlot[] | undefined;
   abilityLevels: Map<number, number> | undefined;
+  /** Reconstructed cooldown + charge timeline per ability_id (active player). */
+  abilityCooldowns?: Map<number, AbilityCooldown>;
+  modifiers?: ModifierSpan[];
+  players?: PlayerInfo[];
+  tick?: number;
   onBack: () => void;
 }) {
   const portrait = heroPortraitUrl(player.hero_id);
@@ -188,8 +280,8 @@ export function PlayerDetail({
   }, [items]);
 
   return (
-    <div className="flex w-80 min-h-0 flex-shrink-0 flex-col gap-3 sm:w-96">
-      <div className="flex items-center gap-2">
+    <div className="flex min-h-0 min-w-[20rem] flex-1 flex-col gap-3">
+      <div className="flex flex-shrink-0 items-center gap-2">
         <button
           type="button"
           onClick={onBack}
@@ -225,138 +317,230 @@ export function PlayerDetail({
         </span>
       </div>
 
-      <CollapsibleSection
-        title="Health"
-        right={
-          <span className="text-xs font-medium tabular-nums">
-            <span className="text-foreground">{stats?.health ?? 0}</span>
-            <span className="text-muted-foreground">
-              {" / "}
-              {stats?.max_health ?? 0}
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
+        <CollapsibleSection
+          title="Health"
+          right={
+            <span className="text-xs font-medium tabular-nums">
+              <span className="text-foreground">{stats?.health ?? 0}</span>
+              <span className="text-muted-foreground">
+                {" / "}
+                {stats?.max_health ?? 0}
+              </span>
             </span>
-          </span>
-        }
-      >
-        <HealthBar
-          health={stats?.health ?? 0}
-          maxHealth={stats?.max_health ?? 0}
-        />
-      </CollapsibleSection>
+          }
+        >
+          <HealthBar
+            health={stats?.health ?? 0}
+            maxHealth={stats?.max_health ?? 0}
+          />
+        </CollapsibleSection>
 
-      {abilities && abilities.length > 0 && (
-        <CollapsibleSection title="Abilities">
-          <div className="flex gap-2">
-            {abilities.map((a) => (
-              <div
-                key={a.ability_id}
-                className="flex min-w-0 flex-1 flex-col items-center gap-1.5"
+        {abilities && abilities.length > 0 && (
+          <CollapsibleSection title="Abilities">
+            <div className="flex gap-2">
+              {abilities.map((a) => {
+                const ac = abilityCooldowns?.get(a.ability_id);
+                const isCharge = (ac?.maxCharges ?? 0) >= 2;
+                const charge = isCharge
+                  ? chargeAt(ac!.charges, tick ?? 0, ac!.maxCharges)
+                  : null;
+                // The ring shows the per-cast cooldown for all abilities —
+                // including charge abilities (the between-cast lockout), where
+                // it sits alongside the charge pills.
+                const cd = activeCooldown(ac?.cooldowns, tick ?? 0);
+                return (
+                  <div
+                    key={a.ability_id}
+                    className="flex min-w-0 flex-1 flex-col items-center gap-1.5"
+                  >
+                    {/* Charge pills above the icon. The row is always present
+                        (empty for non-charge abilities) so icons stay aligned. */}
+                    <div className="flex h-1.5 w-full items-center justify-center gap-0.5">
+                      {isCharge &&
+                        Array.from({ length: ac!.maxCharges }, (_, i) => {
+                          const full = charge ? i < charge.count : false;
+                          const filling =
+                            charge?.recharging && i === charge.count;
+                          return (
+                            <div
+                              key={i}
+                              className="h-full flex-1 overflow-hidden rounded-full bg-white/25"
+                            >
+                              {full ? (
+                                <div className="h-full w-full bg-white" />
+                              ) : filling ? (
+                                <div
+                                  className="h-full bg-white"
+                                  style={{
+                                    width: `${(charge?.progress ?? 0) * 100}%`,
+                                  }}
+                                />
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                    </div>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="relative flex aspect-square w-full items-center justify-center rounded-md border border-border bg-muted/20">
+                          <AbilityIcon
+                            name={a.ability_name}
+                            size={ABILITY_PIXELS}
+                          />
+                          {cd && (
+                            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                              {/* Semi-transparent pie that empties clockwise as
+                                  the cooldown elapses (the wedge = time left). */}
+                              <div
+                                className="absolute inset-0 rounded-full"
+                                style={{
+                                  background: `conic-gradient(rgb(0 0 0 / 0.55) 0deg ${
+                                    (cd.remaining / cd.total) * 360
+                                  }deg, transparent ${
+                                    (cd.remaining / cd.total) * 360
+                                  }deg 360deg)`,
+                                }}
+                              />
+                              <span className="relative text-xs font-bold tabular-nums text-white [text-shadow:0_1px_2px_rgb(0_0_0/0.95)]">
+                                {cd.remaining >= 10
+                                  ? Math.round(cd.remaining)
+                                  : cd.remaining.toFixed(1)}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {prettifyAbilityName(a.ability_name)}
+                        {cd && ` · ${cd.remaining.toFixed(1)}s`}
+                        {charge && ` · ${charge.count}/${ac!.maxCharges} charges`}
+                      </TooltipContent>
+                    </Tooltip>
+                    <LevelBars
+                      level={abilityLevels?.get(a.ability_id) ?? 0}
+                      color={teamColor}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </CollapsibleSection>
+        )}
+
+        {modifiers && (
+          <CollapsibleSection
+            title="Modifiers"
+            right={
+              <span className="text-xs font-medium tabular-nums text-muted-foreground">
+                {modifiers.length || ""}
+              </span>
+            }
+          >
+            <ModifierList
+              modifiers={modifiers}
+              selfTeam={player.team}
+              selfHeroId={player.hero_id}
+              players={players}
+              tick={tick ?? 0}
+            />
+          </CollapsibleSection>
+        )}
+
+        <CollapsibleSection
+          title="Items"
+          right={
+            <span className="flex items-center gap-2 text-xs font-semibold tabular-nums">
+              <span
+                style={{ color: CATEGORY_COLORS.weapon }}
+                title={`Weapon: ${investment.weapon.toLocaleString()}`}
               >
-                <div className="flex aspect-square w-full items-center justify-center rounded-md border border-border bg-muted/20">
-                  <AbilityIcon name={a.ability_name} size={ABILITY_PIXELS} />
-                </div>
-                <LevelBars
-                  level={abilityLevels?.get(a.ability_id) ?? 0}
-                  color={teamColor}
+                {formatSouls(investment.weapon)}
+              </span>
+              <span
+                style={{ color: CATEGORY_COLORS.vitality }}
+                title={`Vitality: ${investment.vitality.toLocaleString()}`}
+              >
+                {formatSouls(investment.vitality)}
+              </span>
+              <span
+                style={{ color: CATEGORY_COLORS.spirit }}
+                title={`Spirit: ${investment.spirit.toLocaleString()}`}
+              >
+                {formatSouls(investment.spirit)}
+              </span>
+            </span>
+          }
+        >
+          <div className="grid grid-cols-5 gap-2">
+            {slots.map((it, i) =>
+              it.ability_id ? (
+                (() => {
+                  // Frame each item in its category color (gun/vitality/spirit);
+                  // border-box keeps the 48px footprint aligned with empty slots.
+                  const cat = ITEM_STATS[it.ability_name]?.cat;
+                  const color = cat ? CATEGORY_COLORS[cat] : undefined;
+                  return (
+                    <ItemIcon
+                      key={`${i}-${it.ability_id}`}
+                      abilityId={it.ability_id}
+                      abilityName={it.ability_name}
+                      size={ITEM_PIXELS}
+                      className={cn("border-2", !color && "border-border")}
+                      style={color ? { borderColor: color } : undefined}
+                    />
+                  );
+                })()
+              ) : (
+                <div
+                  key={`empty-${i}`}
+                  style={{ width: ITEM_PIXELS, height: ITEM_PIXELS }}
+                  className="rounded border border-border bg-muted/30"
                 />
-              </div>
-            ))}
+              ),
+            )}
           </div>
         </CollapsibleSection>
-      )}
 
-      <CollapsibleSection
-        title="Items"
-        right={
-          <span className="flex items-center gap-2 text-xs font-semibold tabular-nums">
-            <span
-              style={{ color: CATEGORY_COLORS.weapon }}
-              title={`Weapon: ${investment.weapon.toLocaleString()}`}
-            >
-              {formatSouls(investment.weapon)}
-            </span>
-            <span
-              style={{ color: CATEGORY_COLORS.vitality }}
-              title={`Vitality: ${investment.vitality.toLocaleString()}`}
-            >
-              {formatSouls(investment.vitality)}
-            </span>
-            <span
-              style={{ color: CATEGORY_COLORS.spirit }}
-              title={`Spirit: ${investment.spirit.toLocaleString()}`}
-            >
-              {formatSouls(investment.spirit)}
-            </span>
-          </span>
-        }
-      >
-        <div className="grid grid-cols-5 gap-2">
-          {slots.map((it, i) =>
-            it.ability_id ? (
-              (() => {
-                // Frame each item in its category color (gun/vitality/spirit);
-                // border-box keeps the 48px footprint aligned with empty slots.
-                const cat = ITEM_STATS[it.ability_name]?.cat;
-                const color = cat ? CATEGORY_COLORS[cat] : undefined;
-                return (
-                  <ItemIcon
-                    key={`${i}-${it.ability_id}`}
-                    abilityId={it.ability_id}
-                    abilityName={it.ability_name}
-                    size={ITEM_PIXELS}
-                    className={cn("border-2", !color && "border-border")}
-                    style={color ? { borderColor: color } : undefined}
-                  />
-                );
-              })()
-            ) : (
-              <div
-                key={`empty-${i}`}
-                style={{ width: ITEM_PIXELS, height: ITEM_PIXELS }}
-                className="rounded border border-border bg-muted/30"
-              />
-            ),
-          )}
-        </div>
-      </CollapsibleSection>
-
-      <CollapsibleSection title="Bonuses">
-        <dl className="grid grid-cols-3 gap-x-3 gap-y-2">
-          <Bonus
-            icon={HealthIcon}
-            label="Bonus HP"
-            value={stats?.bonus_health ?? 0}
-          />
-          <Bonus
-            icon={WeaponDamageIcon}
-            label="Weapon DMG"
-            value={stats?.weapon_damage ?? 0}
-            percent
-          />
-          <Bonus
-            icon={SpiritIcon}
-            label="Spirit"
-            value={stats?.spirit_power ?? 0}
-          />
-          <Bonus
-            icon={FireRateIcon}
-            label="Fire Rate"
-            value={stats?.fire_rate ?? 0}
-            percent
-          />
-          <Bonus
-            icon={CooldownIcon}
-            label="CDR"
-            value={stats?.cooldown_reduction ?? 0}
-            percent
-          />
-          <Bonus
-            icon={AmmoIcon}
-            label="Ammo"
-            value={stats?.ammo ?? 0}
-            percent
-          />
-        </dl>
-      </CollapsibleSection>
+        <CollapsibleSection title="Bonuses">
+          <dl className="grid grid-cols-3 gap-x-3 gap-y-2">
+            <Bonus
+              icon={HealthIcon}
+              label="Bonus HP"
+              value={stats?.bonus_health ?? 0}
+            />
+            <Bonus
+              icon={WeaponDamageIcon}
+              label="Weapon DMG"
+              value={stats?.weapon_damage ?? 0}
+              percent
+            />
+            <Bonus
+              icon={SpiritIcon}
+              label="Spirit"
+              value={stats?.spirit_power ?? 0}
+            />
+            <Bonus
+              icon={FireRateIcon}
+              label="Fire Rate"
+              value={stats?.fire_rate ?? 0}
+              percent
+            />
+            <Bonus
+              icon={CooldownIcon}
+              label="CDR"
+              value={stats?.cooldown_reduction ?? 0}
+              percent
+            />
+            <Bonus
+              icon={AmmoIcon}
+              label="Ammo"
+              value={stats?.ammo ?? 0}
+              percent
+            />
+          </dl>
+        </CollapsibleSection>
+      </div>
     </div>
   );
 }
@@ -478,4 +662,180 @@ function formatBonus(value: number): string {
   const rounded =
     abs >= 100 ? Math.round(value) : Math.round(value * 10) / 10;
   return rounded > 0 ? `+${rounded}` : `${rounded}`;
+}
+
+// One displayed modifier, after collapsing the raw spans that share a source
+// and caster into a single row.
+type ModRow = {
+  key: string;
+  abilityId: number;
+  abilityName: string;
+  label: string;
+  isItem: boolean;
+  casterHeroId: number;
+  /** Highest in-game stack count seen, and how many raw spans were grouped. */
+  stacks: number;
+  count: number;
+  /** Seconds left at the current tick; null = indefinite. */
+  remaining: number | null;
+  /** True if applied by a hero on the other team (incoming debuff). */
+  incoming: boolean;
+};
+
+// Reconstruct a readable label + icon hint from a span's source. Items are the
+// `upgrade_*` family (great icon + localized-name coverage); everything else is
+// a hero ability, with the modifier's own name as the last-resort label.
+function modifierLabel(m: ModifierSpan): { label: string; isItem: boolean } {
+  if (m.ability_name) {
+    if (m.ability_name.startsWith("upgrade_")) {
+      return { label: itemDisplayName(m.ability_name), isItem: true };
+    }
+    return { label: prettifyAbilityName(m.ability_name), isItem: false };
+  }
+  // Only the modifier's own name resolved — strip the modifier_ prefix and
+  // reuse the ability prettifier for the rest.
+  return {
+    label: prettifyAbilityName(m.modifier_name.replace(/^modifier_/, "")),
+    isItem: false,
+  };
+}
+
+function ModifierList({
+  modifiers,
+  selfTeam,
+  selfHeroId,
+  players,
+  tick,
+}: {
+  modifiers: ModifierSpan[];
+  selfTeam: number;
+  selfHeroId: number;
+  players?: PlayerInfo[];
+  tick: number;
+}) {
+  const heroById = React.useMemo(() => {
+    const m = new Map<number, PlayerInfo>();
+    for (const p of players ?? []) m.set(p.hero_id, p);
+    return m;
+  }, [players]);
+
+  const rows = React.useMemo(() => {
+    const groups = new Map<string, ModRow>();
+    for (const m of modifiers) {
+      const { label, isItem } = modifierLabel(m);
+      if (!label) continue;
+      const source = m.ability_id || `m:${m.modifier_name}`;
+      const key = `${source}|${m.caster_hero_id}`;
+      const remaining =
+        m.duration > 0
+          ? Math.max(0, (m.start_tick + m.duration * TICKS_PER_SECOND - tick) /
+              TICKS_PER_SECOND)
+          : null;
+      const casterTeam = heroById.get(m.caster_hero_id)?.team;
+      const incoming =
+        m.caster_hero_id !== 0 &&
+        m.caster_hero_id !== selfHeroId &&
+        casterTeam != null &&
+        casterTeam !== selfTeam;
+      const cur = groups.get(key);
+      if (cur) {
+        cur.count += 1;
+        cur.stacks = Math.max(cur.stacks, m.stacks);
+        // Indefinite (null) outranks any finite remaining.
+        cur.remaining =
+          cur.remaining == null || remaining == null
+            ? null
+            : Math.max(cur.remaining, remaining);
+      } else {
+        groups.set(key, {
+          key,
+          abilityId: m.ability_id,
+          abilityName: m.ability_name,
+          label,
+          isItem,
+          casterHeroId: m.caster_hero_id,
+          stacks: m.stacks,
+          count: 1,
+          remaining,
+          incoming,
+        });
+      }
+    }
+    // Incoming enemy debuffs first, then by remaining time (timed effects
+    // before passives), then alphabetically for stability.
+    return [...groups.values()].sort((a, b) => {
+      if (a.incoming !== b.incoming) return a.incoming ? -1 : 1;
+      const ar = a.remaining ?? Infinity;
+      const br = b.remaining ?? Infinity;
+      if (ar !== br) return ar - br;
+      return a.label.localeCompare(b.label);
+    });
+  }, [modifiers, heroById, selfTeam, selfHeroId, tick]);
+
+  if (rows.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground">No active modifiers.</p>
+    );
+  }
+
+  return (
+    <ul className="flex flex-col gap-1.5">
+      {rows.map((r) => {
+        const caster =
+          r.casterHeroId && r.casterHeroId !== selfHeroId
+            ? heroById.get(r.casterHeroId)
+            : undefined;
+        const multiplier = r.stacks > 1 ? r.stacks : r.count > 1 ? r.count : 0;
+        return (
+          <li
+            key={r.key}
+            className={cn(
+              "flex items-center gap-2 rounded-md border px-2 py-1.5",
+              r.incoming
+                ? "border-destructive/40 bg-destructive/5"
+                : "border-border bg-muted/20",
+            )}
+          >
+            <div className="flex size-7 flex-shrink-0 items-center justify-center">
+              {r.isItem ? (
+                <ItemIcon
+                  abilityId={r.abilityId}
+                  abilityName={r.abilityName}
+                  size={26}
+                  className="rounded"
+                />
+              ) : r.abilityName ? (
+                <AbilityIcon name={r.abilityName} size={22} />
+              ) : (
+                <div className="size-5 rounded bg-muted/60" />
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-medium leading-tight">
+                {r.label}
+                {multiplier > 0 && (
+                  <span className="ml-1 text-muted-foreground">
+                    ×{multiplier}
+                  </span>
+                )}
+              </p>
+              {caster && (
+                <p className="truncate text-[10px] leading-tight text-muted-foreground">
+                  from {caster.hero_name || caster.name || "—"}
+                </p>
+              )}
+            </div>
+            {r.remaining != null && (
+              <span className="flex-shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                {r.remaining >= 10
+                  ? Math.round(r.remaining)
+                  : r.remaining.toFixed(1)}
+                s
+              </span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
 }

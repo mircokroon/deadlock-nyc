@@ -1,0 +1,7 @@
+<svg width="180" height="180" viewBox="0 0 180 180" xmlns="http://www.w3.org/2000/svg">
+  <!-- Full-bleed icon for iOS home screen (iOS applies its own rounded mask). -->
+  <rect width="180" height="180" fill="#2f4442"/>
+  <g transform="translate(41 38) scale(1.04)">
+    <path d="M47.5547 0L58.3703 16.713L76.944 9.54915L75.8703 29.4275L95.1075 34.5491L82.5547 50L95.1075 65.4509L75.8703 70.5725L76.944 90.4509L58.3703 83.287L47.5547 100L36.7391 83.287L18.1654 90.4509L19.2391 70.5725L0.00186157 65.4509L12.5547 50L0.00186157 34.5491L19.2391 29.4275L18.1654 9.54915L36.7391 16.713L47.5547 0Z" fill="#efdebf"/>
+  </g>
+</svg>

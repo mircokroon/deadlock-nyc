@@ -11,16 +11,21 @@ import {
 
 import { DemoInfoDialog } from "@/components/demo-info-dialog";
 import { EventLog } from "@/components/event-log";
+import { HeatmapView } from "@/components/heatmap-view";
+import { TimelineView } from "@/components/timeline-view";
+import { MatrixView } from "@/components/matrix-view";
 import {
   MapView,
   type AbilityEvent,
   type AbilitySlot,
+  type AbilityTick,
   type AbilityUpgradeEvent,
   type ChatEvent,
   type HeroAbilities,
   type ItemEvent,
   type KillEvent,
   type KillMarker,
+  type ModifierSpan,
   type CampStateEvent,
   type NeutralCamp,
   type NeutralCampState,
@@ -33,23 +38,35 @@ import {
   type PlayerPosition,
   type PositionFrame,
 } from "@/components/map-view";
-import { PlaybackConfig } from "@/components/playback-config";
-import { PlayerDetail } from "@/components/player-detail";
+import { PlaybackConfig, SPEED_OPTIONS } from "@/components/playback-config";
+import {
+  PlayerDetail,
+  type AbilityCooldown,
+  type ChargeState,
+  type CooldownSpan,
+} from "@/components/player-detail";
 import {
   PlayerRoster,
   TEAM_COLORS,
+  type DerivedStats,
   type HeroItems,
   type PlayerInfo,
+  type StatGroup,
 } from "@/components/player-roster";
 import { Timeline } from "@/components/timeline";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { parseDemo } from "@/wasm/boon";
+import { parseDemo, type MatchSummary } from "@/wasm/boon";
+import {
+  ViewPlaceholder,
+  useViewMode,
+} from "@/components/view-mode";
 
 const SAMPLE_EVERY_TICKS = 8;
 const TICKS_PER_SECOND = 64;
@@ -78,21 +95,30 @@ type State =
       abilityEvents: AbilityEvent[];
       abilitySlots: HeroAbilities[];
       abilityUpgradeEvents: AbilityUpgradeEvent[];
+      abilityTicks: AbilityTick[];
       objectiveEvents: ObjectiveEvent[];
       objectives: ObjectiveInfo[];
       objectiveHealth: ObjectiveHealthEvent[];
       neutralCamps: NeutralCamp[];
       campStateEvents: CampStateEvent[];
       chatEvents: ChatEvent[];
+      modifierSpans: ModifierSpan[];
       pauseIntervals: PauseInterval[];
       regulationTicks: number | null;
       players: PlayerInfo[];
       winner: number | null;
+      summary: MatchSummary;
     }
   | { kind: "error"; message: string };
 
 export function UploadZone() {
   const [state, setState] = React.useState<State>({ kind: "idle" });
+  const { setDemoLoaded } = useViewMode();
+
+  // The header's view switcher only appears once a demo is parsed.
+  React.useEffect(() => {
+    setDemoLoaded(state.kind === "done");
+  }, [state.kind, setDemoLoaded]);
 
   async function handleFile(file: File) {
     setState({ kind: "parsing", name: file.name });
@@ -115,16 +141,19 @@ export function UploadZone() {
         abilityEvents: parsed.positions.ability_events,
         abilitySlots: parsed.positions.ability_slots,
         abilityUpgradeEvents: parsed.positions.ability_upgrade_events,
+        abilityTicks: parsed.positions.ability_ticks,
         objectiveEvents: parsed.positions.objective_events,
         objectives: parsed.positions.objectives,
         objectiveHealth: parsed.positions.objective_health,
         neutralCamps: parsed.positions.neutral_camps,
         campStateEvents: parsed.positions.camp_state_events,
         chatEvents: parsed.positions.chat_events,
+        modifierSpans: parsed.positions.modifier_spans,
         pauseIntervals: parsed.positions.pause_intervals,
         regulationTicks: parsed.positions.regulation_ticks,
         players: parsed.players,
         winner: parsed.winner,
+        summary: parsed.summary,
       });
     } catch (err) {
       setState({
@@ -144,16 +173,19 @@ export function UploadZone() {
         abilityEvents={state.abilityEvents}
         abilitySlots={state.abilitySlots}
         abilityUpgradeEvents={state.abilityUpgradeEvents}
+        abilityTicks={state.abilityTicks}
         objectiveEvents={state.objectiveEvents}
         objectives={state.objectives}
         objectiveHealth={state.objectiveHealth}
         neutralCamps={state.neutralCamps}
         campStateEvents={state.campStateEvents}
         chatEvents={state.chatEvents}
+        modifierSpans={state.modifierSpans}
         pauseIntervals={state.pauseIntervals}
         regulationTicks={state.regulationTicks}
         players={state.players}
         winner={state.winner}
+        summary={state.summary}
       />
     );
   }
@@ -302,16 +334,19 @@ function DemoView({
   abilityEvents,
   abilitySlots,
   abilityUpgradeEvents,
+  abilityTicks,
   objectiveEvents,
   objectives,
   objectiveHealth,
   neutralCamps,
   campStateEvents,
   chatEvents,
+  modifierSpans,
   pauseIntervals,
   regulationTicks,
   players,
   winner,
+  summary,
 }: {
   name: string;
   frames: PositionFrame[];
@@ -320,16 +355,19 @@ function DemoView({
   abilityEvents: AbilityEvent[];
   abilitySlots: HeroAbilities[];
   abilityUpgradeEvents: AbilityUpgradeEvent[];
+  abilityTicks: AbilityTick[];
   objectiveEvents: ObjectiveEvent[];
   objectives: ObjectiveInfo[];
   objectiveHealth: ObjectiveHealthEvent[];
   neutralCamps: NeutralCamp[];
   campStateEvents: CampStateEvent[];
   chatEvents: ChatEvent[];
+  modifierSpans: ModifierSpan[];
   pauseIntervals: PauseInterval[];
   regulationTicks: number | null;
   players: PlayerInfo[];
   winner: number | null;
+  summary: MatchSummary;
 }) {
   const [index, setIndex] = React.useState(0);
   const [playing, setPlaying] = React.useState(false);
@@ -337,11 +375,17 @@ function DemoView({
   // Configurable via the playback-settings popover.
   const [playbackSpeed, setPlaybackSpeed] = React.useState(1);
   const [stepTicks, setStepTicks] = React.useState(STEP_TICKS);
+  // Roster stat columns, chosen by the Stats control above the rosters:
+  // Basic (combat/economy), Advanced (KP/uptime), Econ (souls), Position
+  // (distance/time in enemy half).
+  const [statGroup, setStatGroup] = React.useState<StatGroup>("basic");
   const [selectedHeroId, setSelectedHeroId] = React.useState<number | null>(
     null,
   );
   const safeIndex = Math.min(index, Math.max(0, frames.length - 1));
   const frame = frames[safeIndex];
+
+  const { view } = useViewMode();
 
   const selectedPlayer =
     selectedHeroId != null
@@ -353,6 +397,150 @@ function DemoView({
     if (frame) for (const p of frame.players) m.set(p.hero_id, p);
     return m;
   }, [frame]);
+
+  // Cumulative-to-each-frame derived stats, as per-hero prefix arrays so any
+  // tick is an O(1) lookup. Built once per demo (keyed on frames + objectives):
+  //  • aliveReg[i]  — regulation ticks the hero has been alive through frame i.
+  //  • dist[i]      — world-space path length through frame i. Only accrues
+  //                   across frames where the hero is alive on both ends, so
+  //                   respawn teleports back to base don't inflate it.
+  //  • enemyReg[i]  — alive regulation ticks spent in the enemy half (closer to
+  //                   the enemy Patron than the hero's own). TEH = enemyReg /
+  //                   aliveReg.
+  //  • depth[i]     — Σ(t · dReg) over alive frames, where t is the hero's
+  //                   clamped 0..1 position along the own→enemy Patron axis.
+  //                   DEPTH = depth / aliveReg (0 = own base, 1 = enemy base).
+  const movementPrefix = React.useMemo(() => {
+    const n = frames.length;
+    const aliveReg = new Map<number, Float64Array>();
+    const dist = new Map<number, Float64Array>();
+    const enemyReg = new Map<number, Float64Array>();
+    const depth = new Map<number, Float64Array>();
+    for (const p of players) {
+      aliveReg.set(p.hero_id, new Float64Array(n));
+      dist.set(p.hero_id, new Float64Array(n));
+      enemyReg.set(p.hero_id, new Float64Array(n));
+      depth.set(p.hero_id, new Float64Array(n));
+    }
+    // Patron (base) position per team. The midline is their perpendicular
+    // bisector, so "enemy half" = closer to the other team's Patron.
+    const patron = new Map<number, { x: number; y: number }>();
+    for (const o of objectives) {
+      if (o.kind === "patron" && !patron.has(o.team)) {
+        patron.set(o.team, { x: o.x, y: o.y });
+      }
+    }
+    const prev = new Map<number, { x: number; y: number; alive: boolean }>();
+    const aliveAcc = new Map<number, number>();
+    const distAcc = new Map<number, number>();
+    const enemyAcc = new Map<number, number>();
+    const depthAcc = new Map<number, number>();
+    for (let i = 0; i < n; i++) {
+      const f = frames[i];
+      const dReg =
+        i === 0 ? 0 : Math.max(0, f.reg_ticks - frames[i - 1].reg_ticks);
+      for (const pl of f.players) {
+        if (!aliveReg.has(pl.hero_id)) continue; // unresolved hero (id 0)
+        const pv = prev.get(pl.hero_id);
+        if (pv) {
+          if (pl.alive && dReg > 0) {
+            aliveAcc.set(pl.hero_id, (aliveAcc.get(pl.hero_id) ?? 0) + dReg);
+            const own = patron.get(pl.team);
+            const enemy = patron.get(pl.team === 2 ? 3 : 2);
+            if (own && enemy) {
+              const dOwn = (pl.x - own.x) ** 2 + (pl.y - own.y) ** 2;
+              const dEnemy = (pl.x - enemy.x) ** 2 + (pl.y - enemy.y) ** 2;
+              if (dEnemy < dOwn) {
+                enemyAcc.set(pl.hero_id, (enemyAcc.get(pl.hero_id) ?? 0) + dReg);
+              }
+              // Forwardness: clamped fraction along the own→enemy Patron axis
+              // (0 = at own base, 1 = at enemy base), time-weighted by dReg.
+              const ax = enemy.x - own.x;
+              const ay = enemy.y - own.y;
+              const len2 = ax * ax + ay * ay || 1;
+              let t = ((pl.x - own.x) * ax + (pl.y - own.y) * ay) / len2;
+              t = t < 0 ? 0 : t > 1 ? 1 : t;
+              depthAcc.set(pl.hero_id, (depthAcc.get(pl.hero_id) ?? 0) + t * dReg);
+            }
+          }
+          if (pv.alive && pl.alive) {
+            distAcc.set(
+              pl.hero_id,
+              (distAcc.get(pl.hero_id) ?? 0) + Math.hypot(pl.x - pv.x, pl.y - pv.y),
+            );
+          }
+        }
+        prev.set(pl.hero_id, { x: pl.x, y: pl.y, alive: pl.alive });
+      }
+      // Snapshot the running totals for every roster hero (carry forward when
+      // a hero is missing from this frame).
+      for (const p of players) {
+        aliveReg.get(p.hero_id)![i] = aliveAcc.get(p.hero_id) ?? 0;
+        dist.get(p.hero_id)![i] = distAcc.get(p.hero_id) ?? 0;
+        enemyReg.get(p.hero_id)![i] = enemyAcc.get(p.hero_id) ?? 0;
+        depth.get(p.hero_id)![i] = depthAcc.get(p.hero_id) ?? 0;
+      }
+    }
+    return { aliveReg, dist, enemyReg, depth };
+  }, [frames, players, objectives]);
+
+  // Resolve the prefix arrays at the current frame into the derived stats.
+  const derivedByHero = React.useMemo(() => {
+    const m = new Map<number, DerivedStats>();
+    const i = safeIndex;
+    const f = frames[i];
+    const regElapsed =
+      (f?.reg_ticks ?? 0) - (frames[0]?.reg_ticks ?? 0);
+    // Elapsed regulation minutes — denominator for the per-minute rates.
+    const regMinutes = regElapsed / TICKS_PER_SECOND / 60;
+    // Team kill totals at this tick → kill participation (an individual can't
+    // assist their own kill, so this is naturally ≤ 100%).
+    const teamKills = new Map<number, number>();
+    // Team net-worth totals at this tick → each hero's soul share (SPCT).
+    const teamNetWorth = new Map<number, number>();
+    // Team hero-damage totals at this tick → each hero's damage share (DMG%).
+    const teamDamage = new Map<number, number>();
+    const liveById = new Map<number, PlayerPosition>();
+    if (f) {
+      for (const pl of f.players) {
+        liveById.set(pl.hero_id, pl);
+        teamKills.set(pl.team, (teamKills.get(pl.team) ?? 0) + pl.kills);
+        teamNetWorth.set(
+          pl.team,
+          (teamNetWorth.get(pl.team) ?? 0) + pl.net_worth,
+        );
+        teamDamage.set(
+          pl.team,
+          (teamDamage.get(pl.team) ?? 0) + pl.hero_damage,
+        );
+      }
+    }
+    for (const p of players) {
+      const aliveT = movementPrefix.aliveReg.get(p.hero_id)?.[i] ?? 0;
+      const enemyT = movementPrefix.enemyReg.get(p.hero_id)?.[i] ?? 0;
+      const distance = movementPrefix.dist.get(p.hero_id)?.[i] ?? 0;
+      const depthT = movementPrefix.depth.get(p.hero_id)?.[i] ?? 0;
+      const aliveSec = aliveT / TICKS_PER_SECOND;
+      const live = liveById.get(p.hero_id);
+      const tk = live ? teamKills.get(live.team) ?? 0 : 0;
+      const tnw = live ? teamNetWorth.get(live.team) ?? 0 : 0;
+      const tdmg = live ? teamDamage.get(live.team) ?? 0 : 0;
+      m.set(p.hero_id, {
+        uptime: regElapsed > 0 ? (aliveT / regElapsed) * 100 : 0,
+        distance,
+        kp: live && tk > 0 ? ((live.kills + live.assists) / tk) * 100 : 0,
+        teh: aliveT > 0 ? (enemyT / aliveT) * 100 : 0,
+        dpm: live && regMinutes > 0 ? live.hero_damage / regMinutes : 0,
+        spm: live && regMinutes > 0 ? live.net_worth / regMinutes : 0,
+        spct: live && tnw > 0 ? (live.net_worth / tnw) * 100 : 0,
+        spd: aliveSec > 0 ? distance / aliveSec : 0,
+        depth: aliveT > 0 ? (depthT / aliveT) * 100 : 0,
+        dmgShare: live && tdmg > 0 ? (live.hero_damage / tdmg) * 100 : 0,
+        objpm: live && regMinutes > 0 ? live.objective_damage / regMinutes : 0,
+      });
+    }
+    return m;
+  }, [movementPrefix, safeIndex, frames, players]);
 
   // Replay item events up to the current tick to reconstruct each hero's
   // current inventory. Cheap — typically a few hundred events total.
@@ -389,6 +577,88 @@ function DemoView({
     return m;
   }, [abilitySlots]);
 
+  // Reconstruct each ability's cooldown + charge state from the change-only
+  // ability_ticks. All the *_start/_end fields are game-time seconds; a row is
+  // emitted on the tick a state change happens, so we anchor at that tick and
+  // add the duration (`end - start`) — epoch- and pause-independent. A later
+  // same-window change (cooldown reduction, a charge tick) keeps the anchor
+  // tick and just moves the end. `maxCharges` (max remaining_charges seen) ≥ 2
+  // marks a charge-based ability. Built once.
+  const abilityCooldownsByHero = React.useMemo(() => {
+    const groups = new Map<string, AbilityTick[]>();
+    for (const r of abilityTicks) {
+      const k = `${r.hero_id}:${r.ability_id}`;
+      let arr = groups.get(k);
+      if (!arr) {
+        arr = [];
+        groups.set(k, arr);
+      }
+      arr.push(r);
+    }
+    const byHero = new Map<number, Map<number, AbilityCooldown>>();
+    for (const [k, rows] of groups) {
+      const cooldowns: CooldownSpan[] = [];
+      let castStart: number | null = null;
+      const charges: ChargeState[] = [];
+      // Game-time start of the charge currently regenerating, anchored to the
+      // tick it began so a later non-charge change doesn't reset its progress.
+      let rcStartGt: number | null = null;
+      let rcAnchorTick = 0;
+      let maxCharges = 0;
+      for (const r of rows) {
+        const cs = r.cooldown_start;
+        const ce = r.cooldown_end;
+        // Cooldown spans (cast-anchored).
+        if (ce <= cs) {
+          castStart = null; // not on cooldown
+        } else if (castStart === cs && cooldowns.length > 0) {
+          const span = cooldowns[cooldowns.length - 1];
+          span.total = ce - cs;
+          span.end = span.start + (ce - cs) * TICKS_PER_SECOND;
+        } else {
+          castStart = cs;
+          cooldowns.push({
+            start: r.tick,
+            end: r.tick + (ce - cs) * TICKS_PER_SECOND,
+            total: ce - cs,
+          });
+        }
+        // Charge timeline (recharge-window-anchored).
+        if (r.remaining_charges > maxCharges) maxCharges = r.remaining_charges;
+        const rs = r.charge_recharge_start;
+        const re = r.charge_recharge_end;
+        const recharging = re > rs;
+        if (recharging) {
+          if (rcStartGt !== rs) {
+            rcStartGt = rs;
+            rcAnchorTick = r.tick;
+          }
+        } else {
+          rcStartGt = null;
+        }
+        charges.push({
+          startTick: r.tick,
+          count: r.remaining_charges,
+          rechargeStart: rcAnchorTick,
+          rechargeEnd: recharging
+            ? rcAnchorTick + (re - rs) * TICKS_PER_SECOND
+            : r.tick,
+          recharging,
+        });
+      }
+      const sep = k.indexOf(":");
+      const hero = Number(k.slice(0, sep));
+      const ability = Number(k.slice(sep + 1));
+      let m = byHero.get(hero);
+      if (!m) {
+        m = new Map();
+        byHero.set(hero, m);
+      }
+      m.set(ability, { maxCharges, cooldowns, charges });
+    }
+    return byHero;
+  }, [abilityTicks]);
+
   // Replay sparse upgrade events up to the current tick to get each ability's
   // level now (same approach as items — abilities only change a few times).
   const abilityLevelsByHero = React.useMemo(() => {
@@ -405,6 +675,49 @@ function DemoView({
     }
     return m;
   }, [abilityUpgradeEvents, frame]);
+
+  // Index modifier spans by the affected hero (built once per demo).
+  const spansByHero = React.useMemo(() => {
+    const m = new Map<number, ModifierSpan[]>();
+    for (const s of modifierSpans) {
+      let cur = m.get(s.hero_id);
+      if (!cur) {
+        cur = [];
+        m.set(s.hero_id, cur);
+      }
+      cur.push(s);
+    }
+    return m;
+  }, [modifierSpans]);
+
+  // Buffs/debuffs active on the selected player at the current tick: spans
+  // covering [start, end). Only computed for the open detail panel.
+  //
+  // The demo's ActiveModifiers table carries some self-applied item modifiers
+  // *before* the player buys the item — a pre-game loadout snapshot plus a
+  // trickle through early game — which then vanish and are bought for real
+  // later. So drop a self-applied item-sourced modifier unless the player
+  // actually owns that item at this tick; modifiers cast by another hero (real
+  // incoming effects, shown "from X") are kept regardless of ownership.
+  const activeModifiers = React.useMemo(() => {
+    if (selectedHeroId == null) return [];
+    const tick = frame?.tick ?? 0;
+    const spans = spansByHero.get(selectedHeroId);
+    if (!spans) return [];
+    const owned = new Set(
+      (itemsByHero.get(selectedHeroId)?.items ?? []).map((it) => it.ability_id),
+    );
+    return spans.filter((s) => {
+      if (s.start_tick > tick || (s.end_tick != null && tick >= s.end_tick)) {
+        return false;
+      }
+      const selfApplied =
+        s.caster_hero_id === 0 || s.caster_hero_id === selectedHeroId;
+      const isItem = s.ability_name.startsWith("upgrade_");
+      if (isItem && selfApplied && !owned.has(s.ability_id)) return false;
+      return true;
+    });
+  }, [spansByHero, selectedHeroId, frame, itemsByHero]);
 
   const firstTick = frames[0]?.tick ?? 0;
   const lastTick = frames[frames.length - 1]?.tick ?? 0;
@@ -542,12 +855,24 @@ function DemoView({
 
   // Keyboard shortcuts from anywhere on the page (except while typing in a
   // field): Space toggles playback; ←/→ skip back/forward by the configured
-  // step. Refs keep the listener stable while always using the latest values.
+  // step; ↑/↓ step playback speed through SPEED_OPTIONS. Refs keep the listener
+  // stable while always using the latest values.
   const togglePlayRef = React.useRef(togglePlay);
   togglePlayRef.current = togglePlay;
   const skipRef = React.useRef<(dir: number) => void>(() => {});
   skipRef.current = (dir) => seekByTicks(dir * stepTicks);
   React.useEffect(() => {
+    // dir +1 = faster, -1 = slower; clamps at the ends of SPEED_OPTIONS.
+    const cycleSpeed = (dir: number) =>
+      setPlaybackSpeed((cur) => {
+        const idx = SPEED_OPTIONS.indexOf(cur);
+        const base = idx < 0 ? SPEED_OPTIONS.indexOf(1) : idx;
+        const next = Math.max(
+          0,
+          Math.min(SPEED_OPTIONS.length - 1, base + dir),
+        );
+        return SPEED_OPTIONS[next];
+      });
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (
@@ -568,6 +893,12 @@ function DemoView({
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
         skipRef.current(1);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault(); // stop page scroll
+        cycleSpeed(1);
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        cycleSpeed(-1);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -588,89 +919,143 @@ function DemoView({
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col gap-3 p-4">
-      <div className="flex min-h-0 flex-1 items-stretch justify-center gap-4">
-        {selectedPlayer ? (
+      <div className="flex min-h-0 flex-1 items-stretch gap-4">
+        {/* Map-only chrome: the rosters/detail are part of the playback view.
+            Other views (heatmap, placeholders) bring their own full layout. */}
+        {view === "map" &&
+          (selectedPlayer ? (
           <PlayerDetail
             player={selectedPlayer}
             stats={statsByHero.get(selectedPlayer.hero_id)}
             items={itemsByHero.get(selectedPlayer.hero_id)}
             abilities={abilitiesByHero.get(selectedPlayer.hero_id)}
             abilityLevels={abilityLevelsByHero.get(selectedPlayer.hero_id)}
+            abilityCooldowns={abilityCooldownsByHero.get(selectedPlayer.hero_id)}
+            modifiers={activeModifiers}
+            players={players}
+            tick={frame?.tick ?? 0}
             onBack={() => setSelectedHeroId(null)}
           />
         ) : (
-          <div className="flex min-h-0 flex-shrink-0 flex-col gap-2">
+          <div className="flex min-h-0 min-w-[20rem] flex-1 flex-col gap-2">
+            <div className="flex w-full items-center justify-between gap-2">
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Stats
+              </span>
+              <Tabs
+                value={statGroup}
+                onValueChange={(v) => setStatGroup(v as StatGroup)}
+              >
+                <TabsList className="h-7">
+                  <TabsTrigger value="basic" className="px-2 text-xs">
+                    Basic
+                  </TabsTrigger>
+                  <TabsTrigger value="advanced" className="px-2 text-xs">
+                    Adv
+                  </TabsTrigger>
+                  <TabsTrigger value="econ" className="px-2 text-xs">
+                    Econ
+                  </TabsTrigger>
+                  <TabsTrigger value="position" className="px-2 text-xs">
+                    Move
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
             <PlayerRoster
               roster={players}
               stats={statsByHero}
+              derived={derivedByHero}
               team={3}
               align="left"
               winner={winner}
+              statGroup={statGroup}
               onSelect={setSelectedHeroId}
             />
             <PlayerRoster
               roster={players}
               stats={statsByHero}
+              derived={derivedByHero}
               team={2}
               align="left"
               winner={winner}
+              statGroup={statGroup}
               onSelect={setSelectedHeroId}
             />
           </div>
+          ))}
+        {view === "heatmap" ? (
+          <HeatmapView
+            players={players}
+            killEvents={killEvents}
+            abilityEvents={abilityEvents}
+            frames={frames}
+            objectives={objectives}
+            objectiveEvents={objectiveEvents}
+            modifierSpans={modifierSpans}
+          />
+        ) : view === "timeline" ? (
+          <TimelineView players={players} summary={summary} />
+        ) : view === "matrix" ? (
+          <MatrixView players={players} summary={summary} />
+        ) : view !== "map" ? (
+          <ViewPlaceholder view={view} />
+        ) : (
+          <MapView
+            frame={frame}
+            className="h-full"
+            meta={
+              <>
+                tick{" "}
+                {editingTick ? (
+                  <input
+                    type="number"
+                    autoFocus
+                    min={0}
+                    max={totalTicks}
+                    value={tickDraft}
+                    onChange={(e) => setTickDraft(e.target.value)}
+                    onFocus={(e) => e.target.select()}
+                    onBlur={commitTick}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") commitTick();
+                      else if (e.key === "Escape") {
+                        e.stopPropagation();
+                        setEditingTick(false);
+                      }
+                    }}
+                    className="w-20 rounded border border-border bg-background px-1 py-0 text-sm tabular-nums text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+                    aria-label="Jump to tick"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTickDraft(String(currentTick));
+                      setEditingTick(true);
+                    }}
+                    title="Jump to tick"
+                    className="tabular-nums underline-offset-2 hover:text-foreground hover:underline"
+                  >
+                    {currentTick.toLocaleString()}
+                  </button>
+                )}{" "}
+                / <span className="tabular-nums">{totalTicks.toLocaleString()}</span>
+                {" · "}
+                <span className="tabular-nums">
+                  {formatClock((frame?.reg_ticks ?? 0) / TICKS_PER_SECOND)}
+                </span>{" "}
+                regulation
+              </>
+            }
+            killMarkers={killMarkers}
+            objectiveMarkers={objectiveMarkers}
+            objectiveStates={objectiveStates}
+            campStates={campStates}
+            onSelectPlayer={setSelectedHeroId}
+          />
         )}
-        <MapView
-          frame={frame}
-          className="h-full"
-          meta={
-            <>
-              tick{" "}
-              {editingTick ? (
-                <input
-                  type="number"
-                  autoFocus
-                  min={0}
-                  max={totalTicks}
-                  value={tickDraft}
-                  onChange={(e) => setTickDraft(e.target.value)}
-                  onFocus={(e) => e.target.select()}
-                  onBlur={commitTick}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") commitTick();
-                    else if (e.key === "Escape") {
-                      e.stopPropagation();
-                      setEditingTick(false);
-                    }
-                  }}
-                  className="w-20 rounded border border-border bg-background px-1 py-0 text-sm tabular-nums text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
-                  aria-label="Jump to tick"
-                />
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTickDraft(String(currentTick));
-                    setEditingTick(true);
-                  }}
-                  title="Jump to tick"
-                  className="tabular-nums underline-offset-2 hover:text-foreground hover:underline"
-                >
-                  {currentTick.toLocaleString()}
-                </button>
-              )}{" "}
-              / <span className="tabular-nums">{totalTicks.toLocaleString()}</span>
-              {" · "}
-              <span className="tabular-nums">
-                {formatClock((frame?.reg_ticks ?? 0) / TICKS_PER_SECOND)}
-              </span>{" "}
-              regulation
-            </>
-          }
-          killMarkers={killMarkers}
-          objectiveMarkers={objectiveMarkers}
-          objectiveStates={objectiveStates}
-          campStates={campStates}
-          onSelectPlayer={setSelectedHeroId}
-        />
+        {view === "map" && (
         <EventLog
           killEvents={killEvents}
           abilityEvents={abilityEvents}
@@ -687,8 +1072,10 @@ function DemoView({
             setSelectedHeroId(heroId);
           }}
         />
+        )}
       </div>
 
+      {view === "map" && (
       <div className="flex flex-shrink-0 items-center gap-2">
         <Tooltip>
           <TooltipTrigger asChild>
@@ -775,6 +1162,7 @@ function DemoView({
           <TooltipContent>Demo info</TooltipContent>
         </Tooltip>
       </div>
+      )}
 
       <DemoInfoDialog
         open={infoOpen}

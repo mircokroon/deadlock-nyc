@@ -10,9 +10,9 @@ checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
 name = "boon-deadlock"
-version = "0.2.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e335ec717a6fa2bf30b6d334efe7d0cd30df9ae984608a2e44b622f00a462255"
+checksum = "981320a3ba7b3a3b70441ec971e818fb27d30d95b899c234b584f39cf9ed7cb6"
 dependencies = [
  "anyhow",
  "boon-proto",
@@ -27,9 +27,9 @@ dependencies = [
 
 [[package]]
 name = "boon-proto"
-version = "0.2.10691905+6536"
+version = "0.2.10735643+6580"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f1e9c5d98a121c93b0dc42477b5a56bab21570c9aad1a1cb3b29d650a8d8138"
+checksum = "d8057ac2e361bdcccc22461790e63d5c0c627f65bb4a21e9e8bdcb61d138fb09"
 dependencies = [
  "bytes",
  "prost",

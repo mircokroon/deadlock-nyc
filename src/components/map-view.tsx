@@ -2,6 +2,7 @@ import * as React from "react";
 import {
   Amphora,
   Castle,
+  Crosshair,
   Crown,
   Flag,
   Gem,
@@ -128,6 +129,7 @@ export interface PositionsResult {
   frames: PositionFrame[];
   item_events: ItemEvent[];
   kill_events: KillEvent[];
+  fire_events: FireEvent[];
   ability_events: AbilityEvent[];
   ability_slots: HeroAbilities[];
   ability_upgrade_events: AbilityUpgradeEvent[];
@@ -290,6 +292,17 @@ export interface AbilityEvent {
   ability_name: string;
 }
 
+/**
+ * Gun shots fired by a hero, aggregated over one sampled frame's tick window
+ * (count > 0 only). `tick` matches a PositionFrame tick; drives the live-map
+ * muzzle pulses.
+ */
+export interface FireEvent {
+  tick: number;
+  hero_id: number;
+  count: number;
+}
+
 export interface KillMarker {
   x: number;
   y: number;
@@ -328,6 +341,13 @@ const CARET_HALF_W = 260;
 // Neutral (gold) accent for jungle camp chevrons.
 const NEUTRAL_CAMP_COLOR = "#e0b84a";
 
+// Warm muzzle-flash palette for the gunfire overlay — deliberately off the team
+// colors so a firing hero reads as "shooting" regardless of side.
+const MUZZLE_COLOR = "#ffcf6b";
+const MUZZLE_CORE = "#fff4d0";
+// Shots-per-frame (≈0.125s window) that saturates the pulse intensity.
+const MUZZLE_FULL_SHOTS = 3;
+
 // Cyan accent for the urn (Idol), shared with the objectives feed.
 export const URN_COLOR = "#22d3ee";
 
@@ -341,7 +361,13 @@ const Z_TUNNEL_CUTOFF = 0;
 const OFF_LAYER_OPACITY = 0.45;
 
 // Toggleable map layers (the buttons in the map's upper-left).
-type LayerKey = "heroes" | "troopers" | "neutrals" | "objectives" | "urn";
+type LayerKey =
+  | "heroes"
+  | "gunfire"
+  | "troopers"
+  | "neutrals"
+  | "objectives"
+  | "urn";
 type Layers = Record<LayerKey, boolean>;
 const LAYER_TOGGLES: {
   key: LayerKey;
@@ -350,6 +376,12 @@ const LAYER_TOGGLES: {
   desc: string;
 }[] = [
   { key: "heroes", label: "Heroes", Icon: Users, desc: "Player hero positions" },
+  {
+    key: "gunfire",
+    label: "Gunfire",
+    Icon: Crosshair,
+    desc: "Muzzle pulses when a hero fires their gun",
+  },
   {
     key: "troopers",
     label: "Troopers",
@@ -420,6 +452,7 @@ export function MapView({
   objectiveMarkers,
   objectiveStates,
   campStates,
+  firing,
   onSelectPlayer,
 }: {
   frame: PositionFrame | undefined;
@@ -429,11 +462,14 @@ export function MapView({
   objectiveMarkers?: ObjectiveMarker[];
   objectiveStates?: ObjectiveState[];
   campStates?: NeutralCampState[];
+  /** hero_id → gun shots fired in the current frame's window (count > 0). */
+  firing?: Map<number, number>;
   onSelectPlayer?: (heroId: number) => void;
 }) {
   const [layer, setLayer] = React.useState<MapLayer>("surface");
   const [layers, setLayers] = React.useState<Layers>({
     heroes: true,
+    gunfire: true,
     troopers: true,
     neutrals: true,
     objectives: true,
@@ -751,6 +787,10 @@ export function MapView({
               const onLayer = inTunnel === (layer === "tunnels");
               const opacity =
                 (p.alive ? 1 : 0.35) * (onLayer ? 1 : OFF_LAYER_OPACITY);
+              // Gunfire: shots fired by this hero in the current frame's
+              // window. >0 lights the dot and triggers an expanding pulse.
+              const shots = (layers.gunfire && p.alive && firing?.get(p.hero_id)) || 0;
+              const muzzle = Math.min(1, shots / MUZZLE_FULL_SHOTS);
               return (
                 <g
                   key={p.slot}
@@ -794,6 +834,47 @@ export function MapView({
                     stroke={stroke}
                     strokeWidth={DOT_BORDER}
                   />
+                  {/* Muzzle pulse: a warm accent over the team ring plus an
+                      expanding radar pulse, looping (via SMIL) while the hero
+                      keeps firing, and a flash spark at the gun (yaw). */}
+                  {shots > 0 && (
+                    <g style={{ pointerEvents: "none" }}>
+                      <circle
+                        r={DOT_INNER_R + DOT_BORDER / 2}
+                        fill="none"
+                        stroke={MUZZLE_COLOR}
+                        strokeWidth={DOT_BORDER}
+                        strokeOpacity={0.45 + 0.45 * muzzle}
+                      />
+                      <circle
+                        r={DOT_INNER_R + DOT_BORDER}
+                        fill="none"
+                        stroke={MUZZLE_COLOR}
+                        strokeWidth={90}
+                      >
+                        <animate
+                          attributeName="r"
+                          values={`${DOT_INNER_R};${(DOT_INNER_R + DOT_BORDER) * 2}`}
+                          dur="0.55s"
+                          repeatCount="indefinite"
+                        />
+                        <animate
+                          attributeName="opacity"
+                          values="0.8;0"
+                          dur="0.55s"
+                          repeatCount="indefinite"
+                        />
+                      </circle>
+                      <circle
+                        cx={CARET_TIP_R + 120}
+                        cy={0}
+                        r={70 + 70 * muzzle}
+                        transform={`rotate(${-p.yaw})`}
+                        fill={MUZZLE_CORE}
+                        fillOpacity={0.9}
+                      />
+                    </g>
+                  )}
                 </g>
               );
             })}

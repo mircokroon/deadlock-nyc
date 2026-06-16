@@ -21,6 +21,7 @@ import {
   type AbilityTick,
   type AbilityUpgradeEvent,
   type ChatEvent,
+  type FireEvent,
   type HeroAbilities,
   type ItemEvent,
   type KillEvent,
@@ -92,6 +93,7 @@ type State =
       frames: PositionFrame[];
       itemEvents: ItemEvent[];
       killEvents: KillEvent[];
+      fireEvents: FireEvent[];
       abilityEvents: AbilityEvent[];
       abilitySlots: HeroAbilities[];
       abilityUpgradeEvents: AbilityUpgradeEvent[];
@@ -138,6 +140,7 @@ export function UploadZone() {
         frames: parsed.positions.frames,
         itemEvents: parsed.positions.item_events,
         killEvents: parsed.positions.kill_events,
+        fireEvents: parsed.positions.fire_events,
         abilityEvents: parsed.positions.ability_events,
         abilitySlots: parsed.positions.ability_slots,
         abilityUpgradeEvents: parsed.positions.ability_upgrade_events,
@@ -170,6 +173,7 @@ export function UploadZone() {
         frames={state.frames}
         itemEvents={state.itemEvents}
         killEvents={state.killEvents}
+        fireEvents={state.fireEvents}
         abilityEvents={state.abilityEvents}
         abilitySlots={state.abilitySlots}
         abilityUpgradeEvents={state.abilityUpgradeEvents}
@@ -331,6 +335,7 @@ function DemoView({
   frames,
   itemEvents,
   killEvents,
+  fireEvents,
   abilityEvents,
   abilitySlots,
   abilityUpgradeEvents,
@@ -352,6 +357,7 @@ function DemoView({
   frames: PositionFrame[];
   itemEvents: ItemEvent[];
   killEvents: KillEvent[];
+  fireEvents: FireEvent[];
   abilityEvents: AbilityEvent[];
   abilitySlots: HeroAbilities[];
   abilityUpgradeEvents: AbilityUpgradeEvent[];
@@ -812,6 +818,25 @@ function DemoView({
     }));
   }, [neutralCamps, campStateEvents, frame]);
 
+  // Gun-shot tallies bucketed by frame tick (each fire event's tick matches a
+  // frame). Built once; the map reads the current frame's bucket for pulses.
+  const fireByTick = React.useMemo(() => {
+    const m = new Map<number, Map<number, number>>();
+    for (const e of fireEvents) {
+      let inner = m.get(e.tick);
+      if (!inner) {
+        inner = new Map();
+        m.set(e.tick, inner);
+      }
+      inner.set(e.hero_id, (inner.get(e.hero_id) ?? 0) + e.count);
+    }
+    return m;
+  }, [fireEvents]);
+  const firing = React.useMemo(
+    () => (frame ? fireByTick.get(frame.tick) : undefined),
+    [fireByTick, frame],
+  );
+
   React.useEffect(() => {
     if (!playing) return;
     if (safeIndex >= frames.length - 1) {
@@ -1052,6 +1077,7 @@ function DemoView({
             objectiveMarkers={objectiveMarkers}
             objectiveStates={objectiveStates}
             campStates={campStates}
+            firing={firing}
             onSelectPlayer={setSelectedHeroId}
           />
         )}

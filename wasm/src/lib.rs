@@ -572,6 +572,12 @@ impl DemoParser {
         let mut kill_events_raw: Vec<RawKillEvent> = Vec::new();
         let mut ability_events_raw: Vec<RawAbilityEvent> = Vec::new();
         let mut chat_events_raw: Vec<RawChatEvent> = Vec::new();
+        // Gun-fire tallies. CMsgFireBullets fires once per trigger pull; we
+        // accumulate per shooter pawn across each sample window and flush a
+        // per-frame count on every emitted frame (resolved to hero IDs after
+        // the walk, like kills). Powers the live-map muzzle pulses.
+        let mut fire_accum: HashMap<i32, u16> = HashMap::new();
+        let mut fire_events_raw: Vec<RawFireEvent> = Vec::new();
         let mut resolved_paths: Option<ResolvedPaths> = None;
 
         // Objective destructions (Guardian/Walker/Shrine/Base Guardian/Patron +
@@ -967,7 +973,8 @@ impl DemoParser {
                         CCitadelUserMessageImportantAbilityUsed,
                         CCitadelUserMsgAbilitiesChanged, CCitadelUserMsgBossKilled,
                         CCitadelUserMsgChatMsg, CCitadelUserMsgHeroKilled,
-                        CitadelUserMessageIds as Msg,
+                        CMsgFireBullets, CitadelUserMessageIds as Msg,
+                        ECitadelGameEvents,
                     };
                     use prost::Message;
                     for event in events {
@@ -1096,6 +1103,20 @@ impl DemoParser {
                                     all_chat: msg.all_chat.unwrap_or(false),
                                     text,
                                 });
+                            }
+                        } else if event.msg_type
+                            == ECitadelGameEvents::GeFireBullets as u32
+                            && let Ok(msg) =
+                                CMsgFireBullets::decode(event.payload.as_slice())
+                            && msg.fired_from_gun.unwrap_or(true)
+                        {
+                            // Gun shots only — abilities also emit FireBullets.
+                            // Tally per shooter pawn; bucketed per frame and
+                            // resolved to a hero after the walk, like kills.
+                            let shooter = msg.shooter_entity.unwrap_or(-1);
+                            if shooter > 0 {
+                                let c = fire_accum.entry(shooter).or_insert(0);
+                                *c = c.saturating_add(1);
                             }
                         }
                     }
@@ -1668,6 +1689,15 @@ impl DemoParser {
                     troopers,
                     urns,
                 });
+
+                // Flush this window's gun-shot tallies onto the frame's tick.
+                for (pawn, count) in fire_accum.drain() {
+                    fire_events_raw.push(RawFireEvent {
+                        tick: ctx.tick,
+                        pawn,
+                        count,
+                    });
+                }
             })
             .map_err(to_js_error)?;
 
@@ -1734,6 +1764,20 @@ impl DemoParser {
                 x: raw.x,
                 y: raw.y,
             });
+        }
+
+        // Resolve gun-fire tallies (shooter pawn → hero); drop shots from pawns
+        // we never mapped (rare, pre-roster). Already tick-ordered by frame.
+        let mut fire_events: Vec<FireEvent> =
+            Vec::with_capacity(fire_events_raw.len());
+        for raw in fire_events_raw {
+            if let Some(&hero_id) = pawn_to_hero.get(&raw.pawn) {
+                fire_events.push(FireEvent {
+                    tick: raw.tick,
+                    hero_id,
+                    count: raw.count,
+                });
+            }
         }
 
         // Resolve important-ability-used events to hero IDs via pawn_to_hero.
@@ -1836,6 +1880,7 @@ impl DemoParser {
             frames,
             item_events,
             kill_events,
+            fire_events,
             ability_events,
             ability_slots: ability_slots_out,
             ability_upgrade_events,
@@ -1862,6 +1907,9 @@ struct PositionsResult {
     frames: Vec<PositionFrame>,
     item_events: Vec<ItemEvent>,
     kill_events: Vec<KillEvent>,
+    /// Per-frame gun-shot tallies per hero (count > 0 only); `tick` matches a
+    /// PositionFrame tick. Powers the live-map muzzle pulses.
+    fire_events: Vec<FireEvent>,
     /// Important-ability-used events (ults / signature abilities).
     ability_events: Vec<AbilityEvent>,
     /// Each hero's signature abilities (constant), for the player ability panel.
@@ -1933,6 +1981,22 @@ struct KillEvent {
     victim_hero_id: i64,
     x: f32,
     y: f32,
+}
+
+struct RawFireEvent {
+    tick: i32,
+    pawn: i32,
+    count: u16,
+}
+
+/// Gun shots fired by a hero, aggregated over one sampled frame's tick window
+/// (emitted only when count > 0). `tick` matches a PositionFrame tick; powers
+/// the live-map muzzle pulses.
+#[derive(Serialize)]
+struct FireEvent {
+    tick: i32,
+    hero_id: i64,
+    count: u16,
 }
 
 struct RawAbilityEvent {

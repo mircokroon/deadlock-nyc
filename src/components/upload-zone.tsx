@@ -220,7 +220,8 @@ function IdleView({
           Deadlock demo viewer
         </h1>
         <p className="mt-2 text-muted-foreground">
-          Drop a <code className="font-mono text-sm">.dem</code> file to parse it in your browser.
+          Select a <code className="font-mono text-sm">.dem</code> replay — it
+          parses right in your browser in a few seconds. No Steam login needed.
         </p>
       </div>
 
@@ -264,7 +265,7 @@ function IdleView({
             <p className="text-base font-medium">
               {parsing
                 ? `Parsing ${state.name}…`
-                : "Drop a .dem file or click to upload"}
+                : "Drop a .dem file or click to select"}
             </p>
             {parsing ? (
               <>
@@ -290,7 +291,7 @@ function IdleView({
               </>
             ) : (
               <p className="mt-1 text-sm text-muted-foreground">
-                Parsed entirely in your browser — nothing is uploaded.
+                Parsed entirely in your browser — nothing leaves your machine.
               </p>
             )}
           </div>
@@ -313,6 +314,17 @@ function IdleView({
             {state.message}
           </p>
         )}
+
+        <div className="mt-6 rounded-md border border-border bg-card/50 px-4 py-3 text-sm text-muted-foreground">
+          <p className="font-medium text-foreground">Where do I find a replay?</p>
+          <p className="mt-1">
+            In Deadlock, open your match history and download the replay you
+            want. It's then saved on your PC under:
+          </p>
+          <code className="mt-2 block overflow-x-auto rounded bg-muted px-2 py-1 font-mono text-xs text-foreground">
+            C:\Program Files (x86)\Steam\steamapps\common\Deadlock\game\citadel\replays
+          </code>
+        </div>
       </div>
     </div>
   );

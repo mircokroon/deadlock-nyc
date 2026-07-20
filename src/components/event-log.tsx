@@ -64,9 +64,15 @@ export function EventLog({
   // Hero focus filters, kept per-tab. Empty set => show everyone; otherwise
   // only events involving a selected hero are shown.
   const [killFilter, setKillFilter] = React.useState<Set<number>>(new Set());
-  const [abilityFilter, setAbilityFilter] = React.useState<Set<number>>(
-    new Set(),
-  );
+  const [abilityFilter, setAbilityFilter] = React.useState<Set<number>>(new Set());
+  const [chatFilter, setChatFilter] = React.useState<Set<number>>(new Set());
+
+  const filter = {
+    "kills": { filter: killFilter, set: setKillFilter },
+    "abilities": { filter: abilityFilter, set: setAbilityFilter },
+    "chat": { filter: chatFilter, set: setChatFilter}
+  }
+
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
   const heroById = React.useMemo(() => {
@@ -103,10 +109,13 @@ export function EventLog({
     [objectiveEvents],
   );
 
-  const visibleChat = React.useMemo(
-    () => chatEvents.slice().reverse(),
-    [chatEvents],
-  );
+  const visibleChat = React.useMemo(() => {
+    let out = chatEvents;
+    if (chatFilter.size > 0) {
+      out = out.filter((e) => chatFilter.has(e.hero_id));
+    }
+    return out.slice().reverse();
+  }, [chatEvents, chatFilter]);
 
   const toggle = (
     setFilter: React.Dispatch<React.SetStateAction<Set<number>>>,
@@ -148,12 +157,12 @@ export function EventLog({
         </TabsList>
       </Tabs>
 
-      {(tab === "kills" || tab === "abilities") && (
+      {(tab === "kills" || tab === "abilities" || tab === "chat") && (
         <HeroFilter
           players={players}
-          selected={tab === "kills" ? killFilter : abilityFilter}
+          selected={filter[tab].filter}
           onToggle={(id) =>
-            toggle(tab === "kills" ? setKillFilter : setAbilityFilter, id)
+            toggle(filter[tab].set, id)
           }
         />
       )}

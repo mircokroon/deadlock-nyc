@@ -163,8 +163,18 @@
     initial-value: none;
   }
 
+  li:has(> .chat-row-fancy) {
+    border: none !important;
+  }
+
   .chat-row-player, .chat-row-hero {
     background: var(--chat-bg-color);
+  }
+
+  .chat-row-fancy {
+    display: flex;
+    align-items: center;
+    padding-block: .2rem;
   }
 
   .chat-row-fancy .chat-row {
